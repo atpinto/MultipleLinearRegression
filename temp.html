@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiple Linear Regression Simulation</title>
+    <!-- Include Plotly.js -->
+    <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+    <!-- Include Math.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            /* Removed align-items: center to allow full width */
+            padding: 15px;
+            margin: 0;
+            box-sizing: border-box; /* Include padding in width/height */
+        }
+
+        h1 {
+            text-align: center;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: row; /* Side-by-side columns */
+            width: 100%;
+            max-width: 1500px; /* Limit overall width */
+            margin: 0 auto; /* Center the container */
+            gap: 30px; /* Space between columns */
+            align-items: flex-start; /* Align tops of columns */
+        }
+
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            flex: 0 0 350px; /* Fixed width: Don't grow, don't shrink, basis 350px */
+            gap: 20px; /* Space between controls and info */
+        }
+
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* Grow to fill remaining space */
+            min-width: 0; /* Allow flex item to shrink below content size if needed */
+            align-items: center; /* Center plots horizontally */
+            gap: 20px; /* Space between 3D plot and residual section */
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 8px 15px; /* Adjusted gap */
+            align-items: center;
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 8px;
+            width: 100%; /* Take full width of left column */
+            box-sizing: border-box;
+        }
+        .controls label {
+            text-align: right;
+            font-size: 0.9em;
+        }
+        .controls input[type="range"] {
+            width: 100%;
+        }
+
+        #info {
+            padding: 15px;
+            border: 1px solid #ccc;
+            background-color: #e9e9e9;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre;
+            width: 100%; /* Take full width of left column */
+            box-sizing: border-box;
+            text-align: left;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .residual-plot-section {
+             display: flex;
+             flex-direction: column;
+             align-items: center; /* Center heading and plot */
+             width: 100%; /* Take width of right column */
+        }
+
+        .plot { /* Common style for plot divs */
+            height: 450px;
+            width: 100%; /* Take full width of container */
+            box-sizing: border-box;
+        }
+
+        #plot3d {
+             height: 550px; /* Taller 3D plot */
+             max-width: 800px; /* Max width for 3D plot */
+        }
+
+        #residPlotPred {
+             max-width: 600px; /* Max width for residual plot */
+             height: 400px; /* Slightly shorter */
+        }
+
+        #correlationWarning { /* Moved warning styling */
+             color: red;
+             font-weight: bold;
+             margin-bottom: 15px; /* Space below warning */
+             text-align: center;
+             width: 100%;
+             box-sizing: border-box;
+        }
+
+        h2 { /* Residual plot heading */
+            text-align: center;
+            margin-bottom: 5px;
+            margin-top: 0; /* Reset top margin */
+            font-size: 1.2em;
+        }
+
+         /* Responsive adjustments (optional example) */
+        @media (max-width: 900px) {
+            .main-container {
+                flex-direction: column; /* Stack columns vertically */
+                align-items: center; /* Center stacked columns */
+            }
+            .left-column {
+                flex-basis: auto; /* Reset basis */
+                width: 100%; /* Take full width */
+                max-width: 500px; /* Limit width on small screens */
+            }
+            .right-column {
+                width: 100%; /* Take full width */
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Multiple Linear Regression Simulation</h1>
+
+    <div id="correlationWarning" class="error" style="display: none;">
+        Warning: The specified correlations might not be mathematically possible together. Results may be unreliable.
+    </div>
+
+    <div class="main-container">
+
+        <div class="left-column">
+            <div class="controls">
+                <label for="nPoints">N Points:</label>
+                <input type="range" id="nPoints" min="50" max="500" value="150" step="10">
+                <span id="nPointsValue">150</span>
+
+                <label for="corrX1X2">Corr(X1, X2):</label>
+                <input type="range" id="corrX1X2" min="-0.95" max="0.95" value="0.5" step="0.05">
+                <span id="corrX1X2Value">0.50</span>
+
+                <label for="corrX1Y">Corr(X1, Y):</label>
+                <input type="range" id="corrX1Y" min="-0.95" max="0.95" value="0.6" step="0.05">
+                <span id="corrX1YValue">0.60</span>
+
+                <label for="corrX2Y">Corr(X2, Y):</label>
+                <input type="range" id="corrX2Y" min="-0.95" max="0.95" value="0.3" step="0.05">
+                <span id="corrX2YValue">0.30</span>
+            </div>
+
+            <div id="info">Regression results will appear here...</div>
+        </div>
+
+        <div class="right-column">
+            <div id="plot3d" class="plot"></div>
+            <div class="residual-plot-section">
+                 <h2>Residual Plot</h2>
+                 <div id="residPlotPred" class="plot"></div>
+            </div>
+        </div>
+
+    </div>
+
+
+    <script>
+        // --- Configuration & DOM Elements ---
+        const nPointsSlider = document.getElementById('nPoints');
+        const corrX1X2Slider = document.getElementById('corrX1X2');
+        const corrX1YSlider = document.getElementById('corrX1Y');
+        const corrX2YSlider = document.getElementById('corrX2Y');
+
+        const nPointsValueSpan = document.getElementById('nPointsValue');
+        const corrX1X2ValueSpan = document.getElementById('corrX1X2Value');
+        const corrX1YValueSpan = document.getElementById('corrX1YValue');
+        const corrX2YValueSpan = document.getElementById('corrX2YValue');
+
+        const infoDiv = document.getElementById('info');
+        const plot3dDiv = document.getElementById('plot3d');
+        const residPlotPredDiv = document.getElementById('residPlotPred');
+        const warningDiv = document.getElementById('correlationWarning');
+
+        // --- Helper Functions (mean, randn_bm, checkCorrelationValidity) ---
+        // Standard Normal Variate using Box-Muller transform
+        let z1_cached;
+        let use_cached = false;
+        function randn_bm() {
+            if (use_cached) {
+                use_cached = false;
+                return z1_cached;
+            }
+            let u1 = 0, u2 = 0;
+            while (u1 === 0) u1 = Math.random(); // Ensure u1 is not 0
+            u2 = Math.random();
+            const R = Math.sqrt(-2.0 * Math.log(u1));
+            const theta = 2.0 * Math.PI * u2;
+            const z0 = R * Math.cos(theta);
+            z1_cached = R * Math.sin(theta);
+            use_cached = true;
+            return z0;
+        }
+
+        // Calculate sample mean
+        function mean(arr) {
+            if (arr.length === 0) return 0;
+            return arr.reduce((sum, val) => sum + val, 0) / arr.length;
+        }
+
+        // Check if correlation matrix is positive semi-definite
+        function checkCorrelationValidity(r12, r1y, r2y) {
+             // Determinant of the 3x3 correlation matrix
+             const det = 1 + 2 * r12 * r1y * r2y - r12*r12 - r1y*r1y - r2y*r2y;
+             return det >= -1e-9; // Increased tolerance slightly
+        }
+
+
+        // --- Core Simulation Logic ---
+
+        function generateData(n, targetR12, targetR1y, targetR2y) {
+            const x1 = [];
+            const x2 = [];
+            const y = [];
+
+            // Generate independent standard normal variables
+            const z1 = Array.from({ length: n }, randn_bm);
+            const z2 = Array.from({ length: n }, randn_bm);
+            const z3 = Array.from({ length: n }, randn_bm); // For the error term in Y
+
+            // Create X1 and X2 with target correlation r12
+            const sqrt1_r12sq = Math.sqrt(Math.max(0, 1 - targetR12 * targetR12)); // Ensure non-negative under sqrt
+            for (let i = 0; i < n; i++) {
+                x1.push(z1[i]);
+                x2.push(targetR12 * z1[i] + sqrt1_r12sq * z2[i]);
+            }
+
+            // --- Determine coefficients for Y based on target correlations ---
+            const denom = 1 - targetR12 * targetR12;
+            let beta1_std, beta2_std;
+
+            if (Math.abs(denom) < 1e-6) { // Handle near-perfect collinearity
+                 console.warn("X1 and X2 are nearly perfectly collinear. Betas unstable.");
+                 // Arbitrarily assign effect based on direct correlation if possible, otherwise split?
+                 // Let's stick to the simpler assignment:
+                 beta1_std = targetR1y;
+                 beta2_std = 0;
+                 // Set R2 based on this simplified model if X1 & Y are correlated
+                 // This is heuristic, true R2 is complex here.
+                // R2_std = targetR1y * targetR1y;
+            } else {
+                 beta1_std = (targetR1y - targetR2y * targetR12) / denom;
+                 beta2_std = (targetR2y - targetR1y * targetR12) / denom;
+            }
+
+            // Calculate theoretical R^2 based on *standardized* variables and target correlations
+            // R^2 = b1_std * r1y + b2_std * r2y
+            const R2_std = beta1_std * targetR1y + beta2_std * targetR2y;
+
+            // Ensure R2 is valid [0, 1] (can be outside due to impossible correlations or numerical issues)
+            const clamped_R2_std = Math.max(0, Math.min(1, R2_std));
+            if (R2_std > 1.0001 || R2_std < -0.0001) {
+                console.warn(`Calculated theoretical R^2 (${R2_std.toFixed(4)}) is outside [0, 1]. Clamping. Input correlations might be incompatible.`);
+                // Update warning div text, but don't overwrite the "impossible" error if it's set
+                if (!warningDiv.textContent.startsWith("Error:")) {
+                    warningDiv.textContent = 'Warning: Input correlations may lead to theoretical R² outside [0, 1]. Results are generated but interpret with caution.';
+                     warningDiv.style.display = 'block';
+                }
+            } else {
+                 // Hide general warning if R2 is valid AND no "impossible" error is shown
+                 if (!warningDiv.textContent.startsWith("Error:")) {
+                     warningDiv.style.display = 'none';
+                 }
+            }
+
+            const error_std_dev = Math.sqrt(Math.max(0, 1 - clamped_R2_std)); // Ensure non-negative
+
+            // Generate Y = beta1_std * X1 + beta2_std * X2 + error * Z3
+            for (let i = 0; i < n; i++) {
+                const y_val = beta1_std * x1[i] + beta2_std * x2[i] + error_std_dev * z3[i];
+                y.push(y_val);
+            }
+            return { x1, x2, y };
+        }
+
+        function performRegression(x1, x2, y) {
+            const n = y.length;
+            if (n < 3) {
+                 infoDiv.innerHTML = `<span class="error">Need at least 3 data points for regression.</span>`;
+                 return null;
+            }
+
+            try {
+                // Construct the design matrix X (n x 3) with intercept
+                const ones = math.ones(n, 1);
+                const x1Matrix = math.matrix(x1.map(v => [v]));
+                const x2Matrix = math.matrix(x2.map(v => [v]));
+                const X = math.concat(ones, x1Matrix, x2Matrix, 1);
+
+                // Construct the response vector Y (n x 1)
+                const Y = math.matrix(y.map(v => [v]));
+
+                // Calculate coefficients: b = (X^T * X)^(-1) * X^T * Y
+                const XT = math.transpose(X);
+                const XTX = math.multiply(XT, X);
+                const XTX_inv = math.inv(XTX); // This can fail
+                const XTY = math.multiply(XT, Y);
+                const b = math.multiply(XTX_inv, XTY);
+
+                const coefficients = b.toArray().flat(); // [b0, b1, b2]
+                const b0 = coefficients[0];
+                const b1 = coefficients[1];
+                const b2 = coefficients[2];
+
+                // Calculate predicted values: Y_hat = X * b
+                const y_hat_matrix = math.multiply(X, b);
+                const y_hat = y_hat_matrix.toArray().flat();
+
+                // Calculate residuals: e = Y - Y_hat
+                const residuals = math.subtract(Y, y_hat_matrix).toArray().flat();
+
+                return { b0, b1, b2, y_hat, residuals };
+
+            } catch (error) {
+                console.error("Regression calculation failed:", error);
+                 if (error.message && error.message.toLowerCase().includes("cannot invert matrix")) {
+                    infoDiv.innerHTML = `<span class="error" style="color:red; font-weight:bold;">Error: Cannot perform regression.<br>Covariates might be perfectly collinear (Corr(X1, X2) is likely too close to 1 or -1).</span>`;
+                 } else {
+                    infoDiv.innerHTML = `<span class="error" style="color:red; font-weight:bold;">Error during regression calculation:<br>${error.message}</span>`;
+                 }
+                return null;
+            }
+        }
+
+        function updatePlots(data, regressionResults) {
+            const { x1, x2, y } = data;
+            const { b0, b1, b2, y_hat, residuals } = regressionResults;
+
+            // --- 3D Scatter Plot and Regression Plane ---
+            const trace1 = {
+                x: x1, y: x2, z: y,
+                mode: 'markers',
+                marker: { size: 5, color: y, colorscale: 'Viridis', opacity: 0.7 },
+                type: 'scatter3d', name: 'Data Points'
+            };
+
+            // Create mesh for plane (handle potential empty ranges)
+            const x1Min = Math.min(...x1);
+            const x1Max = Math.max(...x1);
+            const x2Min = Math.min(...x2);
+            const x2Max = Math.max(...x2);
+
+            const x1Range = x1Min === x1Max ? [x1Min] : math.range(x1Min, x1Max, (x1Max - x1Min) / 10 || 1, true).toArray();
+            const x2Range = x2Min === x2Max ? [x2Min] : math.range(x2Min, x2Max, (x2Max - x2Min) / 10 || 1, true).toArray();
+
+            const planeZ = [];
+            const planeX = [];
+            const planeY = [];
+
+            for (let i = 0; i < x1Range.length; i++) {
+                 let rowZ = [];
+                 let rowX = [];
+                 let rowY = [];
+                for (let j = 0; j < x2Range.length; j++) {
+                     rowX.push(x1Range[i]);
+                     rowY.push(x2Range[j]);
+                     rowZ.push(b0 + b1 * x1Range[i] + b2 * x2Range[j]);
+                }
+                 // Only push if row has data (needed if x1Range or x2Range had only 1 value)
+                 if(rowX.length > 0) {
+                    planeZ.push(rowZ);
+                    planeX.push(rowX);
+                    planeY.push(rowY);
+                 }
+            }
+
+             const trace2 = {
+                x: planeX, y: planeY, z: planeZ,
+                type: 'surface', colorscale: 'Blues', opacity: 0.6,
+                showscale: false, name: 'Regression Plane', hoverinfo: 'none'
+            };
+
+            const layout3d = {
+                // title: '3D Scatter Plot and Regression Plane', // Title removed, implied
+                scene: {
+                    xaxis: { title: 'X1', backgroundcolor: "rgb(230, 230,230)", gridcolor: "rgb(255, 255, 255)", zerolinecolor: "rgb(255, 255, 255)"},
+                    yaxis: { title: 'X2', backgroundcolor: "rgb(230, 230,230)", gridcolor: "rgb(255, 255, 255)", zerolinecolor: "rgb(255, 255, 255)"},
+                    zaxis: { title: 'Y (Outcome)', backgroundcolor: "rgb(230, 230,230)", gridcolor: "rgb(255, 255, 255)", zerolinecolor: "rgb(255, 255, 255)"}
+                },
+                margin: { l: 0, r: 0, b: 0, t: 0 } // Minimal margins
+            };
+             // Only add plane trace if it has data
+             const plotData3D = planeX.length > 0 && planeX[0].length > 0 ? [trace1, trace2] : [trace1];
+            Plotly.newPlot(plot3dDiv, plotData3D, layout3d);
+
+            // --- Residual Plot (Predicted vs Residuals ONLY) ---
+             // Handle case where y_hat might be empty or constant
+            const yHatMin = Math.min(...y_hat);
+            const yHatMax = Math.max(...y_hat);
+            const zeroLineXMin = isFinite(yHatMin) ? yHatMin : -1;
+            const zeroLineXMax = isFinite(yHatMax) ? yHatMax : 1;
+
+            const zeroLine = {
+                 type: 'line',
+                 x0: zeroLineXMin, y0: 0,
+                 x1: zeroLineXMax, y1: 0,
+                 line: { color: 'red', width: 1, dash: 'dash' }
+            };
+
+            const residTracePred = {
+                x: y_hat, y: residuals, mode: 'markers', type: 'scatter',
+                name: 'Residuals', marker: { size: 4, color: 'rgba(0, 0, 255, 0.7)' } // Blue with opacity
+            };
+            const layoutPred = {
+                // Title is handled by the <h2> element now
+                xaxis: { title: 'Predicted Y (Y_hat)', zeroline: false },
+                yaxis: { title: 'Residuals (Y - Y_hat)', zeroline: false },
+                shapes: [zeroLine],
+                margin: { l: 50, r: 20, b: 40, t: 10 } // Margins for labels etc.
+            };
+            Plotly.newPlot(residPlotPredDiv, [residTracePred], layoutPred);
+        }
+
+         function displayInfo(data, regressionResults) {
+            if (!regressionResults) {
+                // Error message might already be in infoDiv from performRegression
+                // If not, add a generic one
+                if (!infoDiv.innerHTML.includes('class="error"')) {
+                     infoDiv.textContent = "Regression could not be performed.";
+                }
+                return;
+            }
+            const { b0, b1, b2 } = regressionResults;
+            const { y } = data;
+
+            // Calculate R-squared for the fitted model
+            const y_mean = mean(y);
+            const ss_total = y.reduce((sum, val) => sum + (val - y_mean)**2, 0);
+            const ss_residual = regressionResults.residuals.reduce((sum, val) => sum + val**2, 0);
+            // Handle cases where ss_total might be zero or very close to it
+            const r_squared = ss_total < 1e-9 ? NaN : 1 - (ss_residual / ss_total);
+
+            const infoText = `Regression Results (N=${data.y.length}):
+
+Equation:
+ Y_hat = ${b0.toFixed(3)}
+       + ${b1.toFixed(3)} * X1
+       + ${b2.toFixed(3)} * X2
+
+R-squared: ${isNaN(r_squared) ? 'N/A' : r_squared.toFixed(3)}
+            `;
+            infoDiv.textContent = infoText;
+        }
+
+        // --- Main Simulation Runner ---
+        function runSimulation() {
+            // Get current values
+            const n = parseInt(nPointsSlider.value);
+            const r12 = parseFloat(corrX1X2Slider.value);
+            const r1y = parseFloat(corrX1YSlider.value);
+            const r2y = parseFloat(corrX2YSlider.value);
+
+            // Update displayed values
+            nPointsValueSpan.textContent = n;
+            corrX1X2ValueSpan.textContent = r12.toFixed(2);
+            corrX1YValueSpan.textContent = r1y.toFixed(2);
+            corrX2YValueSpan.textContent = r2y.toFixed(2);
+
+            // Clear previous errors/warnings before checks
+            infoDiv.textContent = "Running simulation..."; // Placeholder
+            warningDiv.style.display = 'none';
+            warningDiv.textContent = ''; // Clear text
+
+            // 1. Check mathematical possibility of correlations
+            if (!checkCorrelationValidity(r12, r1y, r2y)) {
+                warningDiv.style.display = 'block';
+                warningDiv.textContent = 'Error: These target correlations are mathematically impossible together. Adjust sliders.';
+                infoDiv.textContent = "Cannot proceed with impossible correlation values.";
+                 Plotly.purge(plot3dDiv);
+                 Plotly.purge(residPlotPredDiv);
+                 return; // Stop simulation
+            }
+
+            // 2. Generate data (this might add a different warning if R2>1)
+            const data = generateData(n, r12, r1y, r2y);
+
+            // 3. Perform regression (this might add an error to infoDiv)
+            const regressionResults = performRegression(data.x1, data.x2, data.y);
+
+            // 4. Display info (will show error if regression failed, or results)
+            displayInfo(data, regressionResults);
+
+            // 5. Update plots only if regression was successful
+            if (regressionResults) {
+                try {
+                    updatePlots(data, regressionResults);
+                } catch (plotError) {
+                     console.error("Plotting failed:", plotError);
+                     // Optionally display a plotting error message
+                     // infoDiv.innerHTML += `<br><span class="error" style="color:red;">Error displaying plots.</span>`;
+                }
+            } else {
+                 // Clear plots if regression failed
+                 Plotly.purge(plot3dDiv);
+                 Plotly.purge(residPlotPredDiv);
+            }
+        }
+
+        // --- Event Listeners ---
+        nPointsSlider.addEventListener('input', runSimulation);
+        corrX1X2Slider.addEventListener('input', runSimulation);
+        corrX1YSlider.addEventListener('input', runSimulation);
+        corrX2YSlider.addEventListener('input', runSimulation);
+
+        // --- Initial Run ---
+        document.addEventListener('DOMContentLoaded', runSimulation);
+
+    </script>
+
+</body>
+</html>
