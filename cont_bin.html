@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multiple linear regression with a binary covariate</title>
+    <meta charset="utf-8">
+    <!-- Include Plotly.js (specific recent version) -->
+    <script src='https://cdn.plot.ly/plotly-2.29.1.min.js'></script>
+    <!-- Include math.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
+    <!-- Basic Styling -->
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .controls { margin-bottom: 20px; background-color: #f0f0f0; padding: 15px; border-radius: 5px;}
+        .control-group { margin-bottom: 10px; }
+        label { display: inline-block; width: 250px; }
+        input[type=range] { width: 200px; vertical-align: middle; }
+        span { font-weight: bold; min-width: 40px; display: inline-block; text-align: right; margin-left: 10px;}
+        /* --- CSS Changes for Side-by-Side Layout --- */
+        .plot-container {
+            display: flex;          /* Enable Flexbox */
+            flex-wrap: nowrap;      /* Prevent wrapping to next line */
+            gap: 20px;              /* Space between plots */
+            justify-content: space-around; /* Distribute space */
+            overflow-x: auto;       /* Add scrollbar if content overflows horizontally */
+            padding-bottom: 10px;   /* Space for potential scrollbar */
+        }
+        .plot {
+            flex: 1;                /* Allow plots to grow and shrink equally */
+            min-width: 450px;       /* Minimum width before shrinking too much */
+            min-height: 400px;
+            border: 1px solid #ccc;
+        }
+        /* Removed the @media query that forced stacking */
+    </style>
+</head>
+<body>
+
+<h1>Multiple linear regression with a binary covariate</h1>
+
+<p>This interactive simulation shows how the fitted plane in a multiple regression with two covariates, X1 and X2, can be represented in 2d, when one of the covariates (X2) is binary.</p>
+
+<p>Model: Y ~ Intercept + b1*X1 (Continuous) + b2*X2 (Binary)</p>
+
+<div class="controls">
+    <div class="control-group">
+        <label for="corrX1X2Slider">Correlation between X1 and X2:</label>
+        <input type="range" id="corrX1X2Slider" min="0" max="1" step="0.05" value="0.7">
+        <span id="corrX1X2Value">0.70</span>
+        (Controls how strongly X1 predicts X2)
+    </div>
+    <div class="control-group">
+        <label for="signalStrengthSlider">R-squared:</label>
+        <input type="range" id="signalStrengthSlider" min="0.05" max="1" step="0.05" value="0.8"> <!-- Min signal > 0 -->
+        <span id="signalStrengthValue">0.80</span>
+        (Controls effect size relative to noise)
+    </div>
+     <div class="control-group">
+        <label for="nPointsSlider">Number of Points:</label>
+        <input type="range" id="nPointsSlider" min="50" max="500" step="10" value="200">
+        <span id="nPointsValue">200</span>
+    </div>
+    <button id="regenerateButton">Regenerate Data & Fit</button>
+</div>
+
+<div class="plot-container">
+    <div id="plot3d" class="plot"></div>
+    <div id="plot2d" class="plot"></div>
+</div>
+
+<script>
+// Make sure the entire script runs after the DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+
+    console.log("DOM Loaded. Initializing script...");
+
+    // --- Check if libraries loaded ---
+    if (typeof Plotly === 'undefined') {
+        console.error("Plotly.js did not load!");
+        document.getElementById('plot3d').innerHTML = 'Error: Plotly.js failed to load.';
+        document.getElementById('plot2d').innerHTML = 'Error: Plotly.js failed to load.';
+        return; // Stop execution
+    }
+     // Check specifically for the math.js object and required functions
+     if (typeof math === 'undefined' || typeof math.multiply === 'undefined' || typeof math.transpose === 'undefined' || typeof math.lusolve === 'undefined') {
+        console.error("math.js library did not load correctly or is missing required functions!");
+         document.getElementById('plot3d').innerHTML = 'Error: math.js library failed to load. Check console.';
+         document.getElementById('plot2d').innerHTML = 'Error: math.js library failed to load. Check console.';
+        return; // Stop execution
+    }
+    console.log("Libraries (Plotly, math.js) seem loaded.");
+
+    // --- DOM Elements ---
+    const corrX1X2Slider = document.getElementById('corrX1X2Slider');
+    const signalStrengthSlider = document.getElementById('signalStrengthSlider');
+    const nPointsSlider = document.getElementById('nPointsSlider');
+    const corrX1X2ValueSpan = document.getElementById('corrX1X2Value');
+    const signalStrengthValueSpan = document.getElementById('signalStrengthValue');
+    const nPointsValueSpan = document.getElementById('nPointsValue');
+    const regenerateButton = document.getElementById('regenerateButton');
+    const plot3dDiv = document.getElementById('plot3d');
+    const plot2dDiv = document.getElementById('plot2d');
+
+     // Check if plot divs exist
+    if (!plot3dDiv || !plot2dDiv) {
+        console.error("Plot container divs not found!");
+        return;
+    }
+
+    // --- Simulation & Plotting Logic ---
+
+    // Box-Muller transform for standard normal random numbers
+    function randn_bm() {
+        let u = 0, v = 0;
+        while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+        while(v === 0) v = Math.random();
+        let num = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+        return num;
+    }
+
+    function generateData(n, corrX1X2Strength, signalStrength) {
+        // This function remains the same as before
+        console.log(`Generating data: n=${n}, corrX1X2=${corrX1X2Strength.toFixed(2)}, signal=${signalStrength.toFixed(2)}`);
+        const data = { x1: [], x2: [], y: [] };
+        const x1Mean = 10;
+        const x1Sd = 3;
+        const beta0_true = 5;
+        const beta1_base = 2.5;
+        const beta2_base = 10;
+        const beta1_true = signalStrength * beta1_base;
+        const beta2_true = signalStrength * beta2_base;
+        const maxErrorSd = 5;
+        const minErrorSd = 0.5;
+        signalStrength = Math.max(0.01, Math.min(0.99, signalStrength));
+        const errorSd = (1 - signalStrength) * (maxErrorSd - minErrorSd) + minErrorSd;
+        console.log(`True params: b0=${beta0_true}, b1=${beta1_true.toFixed(2)}, b2=${beta2_true.toFixed(2)}, errorSd=${errorSd.toFixed(2)}`);
+        const maxB = 4.0;
+        const b_logistic = corrX1X2Strength * maxB;
+        const a_logistic = -b_logistic * x1Mean;
+        for (let i = 0; i < n; i++) {
+            const x1_i = randn_bm() * x1Sd + x1Mean;
+            const logOdds = a_logistic + b_logistic * x1_i;
+            const probX2is1 = 1 / (1 + Math.exp(-logOdds));
+            const x2_i = (Math.random() < probX2is1) ? 1 : 0;
+            const error_i = randn_bm() * errorSd;
+            const y_i = beta0_true + beta1_true * x1_i + beta2_true * x2_i + error_i;
+            if (![x1_i, x2_i, y_i].every(Number.isFinite)) {
+                 console.warn("Skipping non-finite data point generation."); i--; continue;
+            }
+            data.x1.push(x1_i); data.x2.push(x2_i); data.y.push(y_i);
+        }
+        console.log(`Generated ${data.x1.length} data points.`);
+        const uniqueX2 = [...new Set(data.x2)];
+        if (uniqueX2.length < 2) {
+             console.warn("Warning: Generated data only contains one group for X2. Regression might be unstable or fail.");
+        }
+        return data;
+    }
+
+ function fitModel(data) {
+    console.log("Fitting model using math.js...");
+    const n_pts = data.x1.length;
+
+    if (n_pts < 3) {
+         console.error("Not enough data points to fit model.");
+         return null;
+    }
+
+    const uniqueX2 = [...new Set(data.x2)];
+    if (uniqueX2.length < 2) {
+         console.warn("Cannot fit model reliably: X2 has only one value.", uniqueX2[0]);
+         return null;
+    }
+
+    try {
+        const X_arr = [];
+        for(let i=0; i<n_pts; i++) {
+            X_arr.push([1, data.x1[i], data.x2[i]]);
+        }
+        const X = math.matrix(X_arr);
+        const y = math.matrix(data.y);
+
+        const Xt = math.transpose(X);
+        const XtX = math.multiply(Xt, X);
+        const Xty = math.multiply(Xt, y);
+
+        const beta_matrix = math.lusolve(XtX, Xty);
+        const beta_array = beta_matrix.valueOf();
+
+        const b0 = beta_array[0][0];
+        const b1 = beta_array[1][0];
+        const b2 = beta_array[2][0];
+
+        console.log("Fitted Coeffs (math.js):", { b0, b1, b2 });
+        return { b0, b1, b2 };
+
+    } catch (error) {
+        console.error("Regression failed:", error);
+        return null;
+    }
+}
+
+
+  function updatePlots(data, coeffs, n) {
+    console.log("Updating plots...");
+
+    if (!coeffs || !data || data.x1.length === 0) {
+        console.error("No valid data or coefficients for plotting.");
+        return;
+    }
+
+    const { b0, b1, b2 } = coeffs;
+    const continuousCovariate = data.x1;
+    const binaryCovariate = data.x2;
+    const outcome = data.y;
+
+    const trace0 = {
+        x: continuousCovariate.filter((_, i) => binaryCovariate[i] === 0),
+        y: outcome.filter((_, i) => binaryCovariate[i] === 0),
+        mode: 'markers',
+        type: 'scatter',
+        name: 'Group X2 = 0',
+        marker: { color: 'blue' }
+    };
+
+    const trace1 = {
+        x: continuousCovariate.filter((_, i) => binaryCovariate[i] === 1),
+        y: outcome.filter((_, i) => binaryCovariate[i] === 1),
+        mode: 'markers',
+        type: 'scatter',
+        name: 'Group X2 = 1',
+        marker: { color: 'red' }
+    };
+
+    // Generate Fitted Lines for 2D Plot
+    const xMin = Math.min(...continuousCovariate);
+    const xMax = Math.max(...continuousCovariate);
+    const lineX = [xMin, xMax];
+    const lineY0 = lineX.map(x => b0 + b1 * x);          // Fitted line for X2 = 0
+    const lineY1 = lineX.map(x => b0 + b1 * x + b2);     // Fitted line for X2 = 1
+
+    const fitLine0 = {
+        x: lineX,
+        y: lineY0,
+        mode: 'lines',
+        name: 'Fit (X2 = 0)',
+        line: { color: 'blue' }
+    };
+
+    const fitLine1 = {
+        x: lineX,
+        y: lineY1,
+        mode: 'lines',
+        name: 'Fit (X2 = 1)',
+        line: { color: 'red' }
+    };
+
+    Plotly.newPlot('plot2d', [trace0, trace1, fitLine0, fitLine1], {
+        title: '2D Scatter Plot with Fitted Lines',
+        xaxis: { title: 'Continuous Covariate' },
+        yaxis: { title: 'Outcome' }
+    });
+
+    // Generate Fitted Plane for 3D Plot
+    const x1Grid = [];
+    const x2Grid = [0, 1]; // Two planes for X2 = 0 and X2 = 1
+    const steps = 20;
+    const zSurface = [];
+
+    for (let i = 0; i <= steps; i++) {
+        const x = xMin + (xMax - xMin) * (i / steps);
+        x1Grid.push(x);
+
+        const z0 = b0 + b1 * x + b2 * 0;
+        const z1 = b0 + b1 * x + b2 * 1;
+
+        if (i === 0) {
+            zSurface.push([]);
+            zSurface.push([]);
+        }
+
+        zSurface[0].push(z0); // Plane for X2 = 0
+        zSurface[1].push(z1); // Plane for X2 = 1
+    }
+
+    // Create 3D scatter points based on group
+    const points0 = {
+        x: continuousCovariate.filter((_, i) => binaryCovariate[i] === 0),
+        y: binaryCovariate.filter((v) => v === 0),
+        z: outcome.filter((_, i) => binaryCovariate[i] === 0),
+        mode: 'markers',
+        type: 'scatter3d',
+        name: 'Group X2 = 0',
+        marker: { color: 'blue', size: 4 }
+    };
+
+    const points1 = {
+        x: continuousCovariate.filter((_, i) => binaryCovariate[i] === 1),
+        y: binaryCovariate.filter((v) => v === 1),
+        z: outcome.filter((_, i) => binaryCovariate[i] === 1),
+        mode: 'markers',
+        type: 'scatter3d',
+        name: 'Group X2 = 1',
+        marker: { color: 'red', size: 4 }
+    };
+
+    const surfacePlot = {
+        type: 'surface',
+        x: x1Grid,
+        y: x2Grid,
+        z: zSurface,
+        opacity: 0.6,
+        colorscale: 'Viridis',
+        showscale: false
+    };
+
+    Plotly.newPlot('plot3d', [points0, points1, surfacePlot], {
+        title: '3D Plot with Fitted Plane',
+        scene: {
+            xaxis: { title: 'Continuous Covariate' },
+            yaxis: { title: 'Binary Covariate' },
+            zaxis: { title: 'Outcome' }
+        }
+    });
+
+    console.log("Plots updated successfully.");
+}
+
+
+
+
+    // --- Event Listeners & Initial Run ---
+function runSimulation() {
+    console.log("--- Running Simulation ---");
+
+    // Get values from sliders
+    const n = parseInt(nPointsSlider.value);
+    const corrX1X2 = parseFloat(corrX1X2Slider.value);
+    const signal = parseFloat(signalStrengthSlider.value);
+
+    // Update display values
+    corrX1X2ValueSpan.textContent = corrX1X2.toFixed(2);
+    signalStrengthValueSpan.textContent = signal.toFixed(2);
+    nPointsValueSpan.textContent = n;
+
+    // Generate new data
+    const data = generateData(n, corrX1X2, signal);
+
+    // Check if data generation was successful
+    if (!data || data.x1.length === 0 || data.x2.length === 0 || data.y.length === 0) {
+        console.error("Data generation failed.");
+        return;
+    }
+
+    const coeffs = fitModel(data);
+
+    // Only update plots if model fitting was successful
+    if (coeffs) {
+        updatePlots(data, coeffs, n);
+    } else {
+        console.error("Failed to fit the model. Plotting aborted.");
+    }
+
+    console.log("--- Simulation Complete ---");
+}
+
+
+    // Event listeners remain the same
+    corrX1X2Slider.addEventListener('input', runSimulation);
+    signalStrengthSlider.addEventListener('input', runSimulation);
+    nPointsSlider.addEventListener('input', runSimulation);
+    regenerateButton.addEventListener('click', runSimulation);
+
+    // Initial plot generation on load
+    console.log("Performing initial simulation run...");
+    runSimulation();
+
+}); // End of DOMContentLoaded
+</script>
+
+</body>
+</html>
