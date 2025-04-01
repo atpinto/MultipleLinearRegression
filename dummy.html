@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dummy Variable Coding App</title>
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        select, button { padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        const DummyVariableApp = () => {
+            const initialData = [
+                { ID: 1, Age: 45, TreatmentGroup: 'Placebo', BloodPressure: 120 },
+                { ID: 2, Age: 30, TreatmentGroup: 'Drug A', BloodPressure: 110 },
+                { ID: 3, Age: 55, TreatmentGroup: 'Placebo', BloodPressure: 130 },
+                { ID: 4, Age: 40, TreatmentGroup: 'Drug A', BloodPressure: 115 },
+                { ID: 5, Age: 35, TreatmentGroup: 'Drug B', BloodPressure: 118 },
+                { ID: 6, Age: 50, TreatmentGroup: 'Drug B', BloodPressure: 125 }
+            ];
+
+            const categories = ['Placebo', 'Drug A', 'Drug B'];
+            const [referenceCategory, setReferenceCategory] = useState('Placebo');
+            const [dataset, setDataset] = useState(initialData);
+
+            const generateDummyVariables = () => {
+                const updatedDataset = dataset.map(row => {
+                    const newRow = { ...row };
+
+                    Object.keys(newRow).forEach(key => {
+                        if (key.startsWith('TreatmentGroup_')) {
+                            delete newRow[key];
+                        }
+                    });
+
+                    categories.forEach(category => {
+                        if (category !== referenceCategory) {
+                            newRow[`TreatmentGroup_${category}`] = row.TreatmentGroup === category ? 1 : 0;
+                        }
+                    });
+
+                    return newRow;
+                });
+
+                setDataset(updatedDataset);
+            };
+
+            return (
+                <div>
+                    <h1>Dummy Variable Coding App</h1>
+                    <p>Select a reference category for the categorical variable TreatmentGroup:</p>
+                    <select value={referenceCategory} onChange={e => setReferenceCategory(e.target.value)}>
+                        {categories.map(category => (
+                            <option key={category} value={category}>{category}</option>
+                        ))}
+                    </select>
+                    <button onClick={generateDummyVariables}>Generate Dummy Variables</button>
+
+                    <h2>Dataset (Head View)</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                {Object.keys(dataset[0]).map((col, index) => (
+                                    <th key={index}>{col}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {dataset.slice(0, 5).map((row, rowIndex) => (
+                                <tr key={rowIndex}>
+                                    {Object.values(row).map((value, colIndex) => (
+                                        <td key={colIndex}>{value}</td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<DummyVariableApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
