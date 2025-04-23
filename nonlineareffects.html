@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitting non-linear effects using different models</title>
+    
+    <!-- Include Chart.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Include math.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background-color: #f4f4f4; line-height: 1.5;
+        }
+        h1 {
+            color: #333; margin-bottom: 1em; text-align: center;
+        }
+        #chartContainer {
+            width: 50%; max-width: 600px; margin-bottom: 25px; background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #controls {
+            border: 1px solid #ccc; padding: 20px; border-radius: 8px; background-color: #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: 50%; max-width: 900px; box-sizing: border-box;
+        }
+        #controls h3 {
+             margin-top: 0; color: #555; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;
+        }
+        #controls label,
+        #controls input[type=radio],
+        #controls input[type=number],
+        #controls input[type=text] {
+            margin-right: 8px; margin-bottom: 12px; vertical-align: middle;
+        }
+        #controls div.param-group {
+            margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ddd; display: none; margin-left: 20px;
+        }
+        input[type=number], input[type=text] {
+            width: 100px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em;
+        }
+        input[type=radio] {
+             margin-right: 3px; transform: scale(1.1);
+        }
+        .param-group label {
+             display: inline-block; min-width: 150px; font-weight: 500; color: #444;
+        }
+        #modelInfo {
+            margin-top: 20px; font-size: 1.05em; color: #333; background-color: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; line-height: 1.6;
+        }
+        #modelInfo strong { color: #0056b3; }
+        #modelInfo .equation {
+            font-family: 'Times New Roman', Times, serif; font-size: 0.95em; color: #555; margin-top: 8px; display: block; word-wrap: break-word;
+        }
+        #modelInfo sub, #modelInfo sup { line-height: 0; }
+        small { color: #666; margin-left: 5px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <h1>Fitting non-linear effects using different linear models</h1>
+    <bold>Association between body mass index (BMI) and systolic blood pressure, using sinthetic data</bold>
+
+    <div id="chartContainer">
+        <canvas id="regressionChart"></canvas> <!-- Canvas MUST exist before script tries to use it -->
+    </div>
+
+    <div id="controls">
+        <h3>Model Selection</h3>
+        <label> <input type="radio" name="modelType" value="polynomial" checked> Polynomial </label>
+        <label> <input type="radio" name="modelType" value="fractional"> Fractional Polynomial </label><p></p>
+        <label> <input type="radio" name="modelType" value="spline"> Linear Spline </label>
+        <label> <input type="radio" name="modelType" value="rcs"> Restricted Cubic Spline </label>
+
+        <div id="polyParams" class="param-group">
+            <label for="polyDegree">Polynomial Degree:</label>
+            <input type="number" id="polyDegree" value="2" min="1" max="15"> <small>(1 = Linear)</small>
+        </div>
+        <div id="fracParams" class="param-group">
+            <label for="fracPowers">Powers (comma-sep.):</label>
+            <input type="text" id="fracPowers" value="-0.5, 1" placeholder="e.g., -1,0.5,2,log">
+            <br><small style="margin-left: 160px;">(Use '0' for log(x))</small>
+        </div>
+        <div id="splineParams" class="param-group">
+            <label for="numKnots">Number of Knots (Linear):</label> <!-- Clarified label -->
+            <input type="number" id="numKnots" value="5" min="0" max="25"> <small>(Internal knots)</small>
+        </div>
+        <div id="rcsParams" class="param-group"> <!-- Correct ID -->
+            <label for="rcsNumTotalKnots">Total Knots (RCS):</label> <!-- Clarified label -->
+            <input type="number" id="rcsNumTotalKnots" value="4" min="3" max="25">
+            <small>(Incl. boundary; min 3)</small>
+        </div>
+
+        <div id="modelInfo">
+             <strong>R-squared:</strong> N/A <br>
+             <span class="equation">Equation: Not Available</span>
+        </div>
+    </div>
+
+    <script>
+        // --- Ensure DOM is ready before executing complex logic ---
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- Data Generation Parameters ---
+            const numPoints = 100; const bmiMin = 18; const bmiMax = 42;
+            const baseTASIntercept = 105; 
+            const linearTrendTAS = 0.3; 
+            const quadraticTrendTAS = 0.02; 
+            const noiseLevel = 15;
+            const sinAmplitude = 8; 
+            const sinFrequency = 0.45; 
+            const sinPhase = 0;
+
+            // --- Helper: Positive Part Function ---
+            const pos = (x) => Math.max(0, x);
+
+            // --- Generate Noisy Data ---
+            function generateNoisyData(n, xMin, xMax, intercept, linear, quadratic, noise, amp, freq, phase) {
+                const data = [];
+                for (let i = 0; i < n; i++) {
+                    const x = xMin + Math.random() * (xMax - xMin);
+                    const trueY = intercept + (linear * x) + (quadratic * Math.pow(x, 2)) + (amp * Math.sin(freq * x + phase));
+                    let randomNoise = (Math.random() - 0.5) * 2 * noise;
+                    const y = trueY + randomNoise;
+                    data.push({ x: x, y: y });
+                }
+                return data;
+            }
+
+            // --- Core Regression Logic ---
+            function solveLeastSquares(X_matrix, y_vector) {
+                try {
+                    const XT = math.transpose(X_matrix);
+                    const XTX = math.multiply(XT, X_matrix);
+                    const XTX_inv = math.inv(XTX);
+                    const XTy = math.multiply(XT, y_vector);
+                    const coefficients = math.multiply(XTX_inv, XTy);
+                    return coefficients;
+                } catch (error) {
+                    console.error("Solve Error:", error);
+                    if (error.message && error.message.toLowerCase().includes("singular")) {
+                        alert("Cannot fit: Matrix is singular. Reduce complexity or check data/knots.");
+                    } else {
+                        alert("Calculation Error: " + (error.message || error));
+                    }
+                    return null;
+                }
+            }
+
+            function calculateRSquared(y_actual, y_predicted) {
+                 const validIndices = y_predicted.map((yp, i) => !isNaN(yp) && isFinite(yp) ? i : -1).filter(i => i !== -1);
+                 if (validIndices.length < 2) return NaN;
+                 const y_actual_valid = validIndices.map(i => y_actual[i]);
+                 const y_predicted_valid = validIndices.map(i => y_predicted[i]);
+                const yMean = math.mean(y_actual_valid);
+                const ssTotal = math.sum(y_actual_valid.map(y => Math.pow(y - yMean, 2)));
+                 if (Math.abs(ssTotal) < 1e-10) return 1.0; // Avoid division by zero if all Y are identical
+                const ssResidual = math.sum(y_actual_valid.map((y, i) => Math.pow(y - y_predicted_valid[i], 2)));
+                const rSquared = 1 - (ssResidual / ssTotal);
+                 return rSquared;
+            }
+
+            function createPredictFunction(coefficients, basisFunctionGenerator) {
+                 const flatCoeffs = Array.isArray(coefficients) ? coefficients : (coefficients ? math.flatten(coefficients).valueOf() : []);
+                 if (!flatCoeffs || flatCoeffs.length === 0) return (x) => NaN;
+                 return (x) => {
+                     if (typeof x !== 'number' || isNaN(x)) return NaN;
+                     let basis;
+                     try { basis = basisFunctionGenerator(x); if (!Array.isArray(basis)) {console.error("Basis not array"); return NaN;}}
+                     catch (basisError) { console.error("Basis error", basisError); return NaN; }
+                     if (basis.length !== flatCoeffs.length) { console.error("Basis/Coeff length mismatch", basis.length, flatCoeffs.length); return NaN; }
+                     let prediction = 0;
+                     for(let i=0; i < flatCoeffs.length; i++){
+                        if (isNaN(basis[i]) || !isFinite(basis[i]) || isNaN(flatCoeffs[i]) || !isFinite(flatCoeffs[i])) return NaN;
+                        prediction += basis[i] * flatCoeffs[i];
+                     }
+                     return (isNaN(prediction) || !isFinite(prediction)) ? NaN : prediction;
+                 };
+            }
+
+            // --- Equation Formatting ---
+            function formatTerm(coefficient, index, termInfo) {
+                 if (coefficient === null || isNaN(coefficient)) return " ? ";
+                 const isIntercept = (index === 0 && termInfo === null);
+                 const absCoeff = Math.abs(coefficient);
+                 let valueStr = "";
+                 if (absCoeff>=10) {valueStr = absCoeff.toFixed(1)}
+                 else  { valueStr = absCoeff.toPrecision(2) }                 
+                 let sign = isIntercept ? (coefficient < 0 ? "-" : "") : (coefficient < 0 ? " - " : " + ");
+                 if (!isIntercept && Math.abs(absCoeff - 1.0) < 0.001) valueStr = ""; // Omit 1.000
+                 //let betaStr = `β<sub>${index}</sub>`;
+                 let betaStr = ``;
+                 let variablePart = "";
+                 if (termInfo) {
+                     if (termInfo.power === 1) variablePart = "x";
+                     else if (termInfo.power === 'log' || termInfo.power === 0) variablePart = "log(x)";
+                     else if (termInfo.power !== undefined) variablePart = `x<sup>${termInfo.power}</sup>`;
+                     else if (termInfo.knot !== undefined) variablePart = `(x - ${termInfo.knot.toFixed(2)})<sub>+</sub>`;
+                 }
+                 let term = sign;
+                 if (valueStr) term += valueStr + betaStr;
+                 else if (!isIntercept) term += betaStr;
+                 else term += "1.000" + betaStr; // Explicit 1.000 for intercept=1
+                 if (variablePart) term += variablePart;
+                 return term;
+            }
+
+            function formatEquation(modelType, coefficients, params) {
+                 if (!coefficients || coefficients.length === 0) return "Equation not available.";
+                 let equation = "y ≈ ";
+                 equation += formatTerm(coefficients[0], 0, null); // Intercept
+                 if (modelType === 'polynomial') {
+                     for (let i = 1; i <= params.degree; i++) if (coefficients[i] !== undefined) equation += formatTerm(coefficients[i], i, { power: i });
+                 } else if (modelType === 'fractional') {
+                     const powers = params.powers || [];
+                     for (let j = 0; j < powers.length; j++) if (coefficients[j+1] !== undefined) equation += formatTerm(coefficients[j+1], j+1, { power: powers[j] });
+                 } else if (modelType === 'spline') {
+                     if (coefficients[1] !== undefined) equation += formatTerm(coefficients[1], 1, { power: 1 }); // Linear term
+                     const knots = params.knots || [];
+                     for (let j = 0; j < knots.length; j++) if (coefficients[j+2] !== undefined) equation += formatTerm(coefficients[j+2], j+2, { knot: knots[j] });
+                 }
+                 return equation;
+            }
+
+            // --- Model Fitting Functions ---
+            function fitPolynomial(data, degree) {
+                 const basisFunc = (x) => { const b = [1]; for (let i = 1; i <= degree; i++) b.push(x**i); return b; };
+                 const X = data.map(d => basisFunc(d.x)), y = data.map(d => d.y);
+                 const C = solveLeastSquares(X, y); if (!C) return null;
+                 const flatC = math.flatten(C).valueOf(); const predict = createPredictFunction(flatC, basisFunc);
+                 const y_pred = data.map(d => predict(d.x)); const R2 = calculateRSquared(y, y_pred);
+                 return { coefficients: flatC, predict, rSquared: R2, degree: degree };
+            }
+
+            function fitFractional(data, powersStr) {
+                 const powersInput=powersStr.split(',').map(p=>p.trim().toLowerCase()).filter(p=>p!=="").map(p=>(p==='log'?'log':parseFloat(p))).filter(p=>p==='log'||!isNaN(p));
+                 const uniquePowers = [...new Set(powersInput)];
+                 if(uniquePowers.length===0 && !powersStr.includes('log')) {console.error("Invalid FP powers"); return null;}
+                 const reqPos=uniquePowers.some(p=>p==='log'||p===0||(typeof p==='number'&&p<0)||!Number.isInteger(p));
+                 if(reqPos && data.some(d=>d.x<=0)){console.error("FP needs X>0"); return null;}
+                 const basisFunc=(x)=>{const b=[1];const sx=(reqPos&&x<=0)?1e-9:x; for(const p of uniquePowers){if(p==='log'||p===0)b.push(Math.log(sx));else b.push(sx**p);} return b;};
+                 const X = data.map(d => basisFunc(d.x)), y = data.map(d => d.y);
+                 const C = solveLeastSquares(X, y); if (!C) return null;
+                 const flatC = math.flatten(C).valueOf(); const predict = createPredictFunction(flatC, basisFunc);
+                 const y_pred = data.map(d => predict(d.x)); const R2 = calculateRSquared(y, y_pred);
+                 return { coefficients: flatC, predict, rSquared: R2, powers: uniquePowers };
+            }
+
+            function fitSpline(data, numLinearKnots) {
+                 const sortedX=[...data.map(d=>d.x)].sort((a,b)=>a-b); const n=sortedX.length;
+                 let knots=[]; if(numLinearKnots>0&&n>2){const uniqueX=[...new Set(sortedX)];const intX=uniqueX.slice(1,-1);const nInt=intX.length; if(nInt>0){if(numLinearKnots>nInt){knots=intX;}else{const idx=[];for(let i=1;i<=numLinearKnots;i++)idx.push(Math.max(0,Math.min(nInt-1,Math.round(i*(nInt+1)/(numLinearKnots+1))-1))); knots=[...new Set(idx)].map(i=>intX[i]);}} knots.sort((a,b)=>a-b);}
+                 const basisFunc=(x)=>{const b=[1,x];for(const k of knots)b.push(pos(x-k)); return b;};
+                 const X = data.map(d => basisFunc(d.x)), y = data.map(d => d.y);
+                 const C = solveLeastSquares(X, y); if (!C) return null;
+                 const flatC = math.flatten(C).valueOf(); const predict = createPredictFunction(flatC, basisFunc);
+                 const y_pred = data.map(d => predict(d.x)); const R2 = calculateRSquared(y, y_pred);
+                 return { coefficients: flatC, predict, rSquared: R2, knots: knots };
+            }
+
+             // --- RCS Basis and Fitting ---
+            function basisFunctionGeneratorRCS(x, knots) {
+                 const k = knots.length; if (k < 3) return [1, x]; // Fallback for safety
+                 const basis = [1, x]; const tk = knots[k-1]; const tk_1 = knots[k-2]; const knot_denom = tk - tk_1;
+                 if (Math.abs(knot_denom) < 1e-9) { console.error("RCS Denom error (tk,tk-1)"); return basis.concat(Array(k-2).fill(NaN)); }
+                 for (let j = 1; j <= k - 2; j++) {
+                     const tj = knots[j-1]; const tj_denom = tk - tj;
+                     if (Math.abs(tj_denom) < 1e-9) { console.error("RCS Denom error (tk, tj)"); basis.push(NaN); continue; }
+                     const lambda_j = (tk - tj) / (tk - tk_1); // Corrected lambda definition per Harrell
+                     const term1 = pos(x - tj)**3;
+                     const term2 = lambda_j * pos(x - tk_1)**3; // Use k-1 knot here
+                     const term3 = (1 - lambda_j) * pos(x - tk)**3; // Use k knot here
+                     basis.push(term1 - term2 - term3);
+                 }
+                 if (basis.length !== k) { console.error(`RCS Basis length mismatch: ${basis.length} vs ${k}`); while(basis.length<k)basis.push(NaN); while(basis.length>k)basis.pop();}
+                 return basis;
+            }
+
+            function fitRCSpline(data, numTotalKnots) {
+                 if (numTotalKnots < 3) { alert("RCS needs >= 3 knots."); return null; }
+                 const uniqueX = [...new Set(data.map(d => d.x))].sort((a, b) => a - b); const nUnique = uniqueX.length;
+                 if (nUnique < 2) { alert("Need >1 unique X for RCS."); return null; }
+                 if (numTotalKnots > nUnique) { numTotalKnots = nUnique; if(numTotalKnots<3) {alert("Reduced knots < 3"); return null;} console.warn(`Reduced RCS knots to ${numTotalKnots}`); }
+                 let knots = []; const boundaryMin = uniqueX[0]; const boundaryMax = uniqueX[nUnique-1];
+                 knots.push(boundaryMin); const numInternalKnots = numTotalKnots - 2;
+                 if (numInternalKnots > 0) {
+                     const internalX = uniqueX.slice(1, -1); const nInternal = internalX.length;
+                     if (nInternal > 0) {
+                          if (numInternalKnots > nInternal) { knots = knots.concat(internalX); console.warn("Using all internal X as knots"); }
+                          else { const indices = []; for (let i = 1; i <= numInternalKnots; i++) indices.push(Math.max(0, Math.min(nInternal-1, Math.round(i*(nInternal+1)/(numInternalKnots+1))-1))); knots = knots.concat([...new Set(indices)].map(idx => internalX[idx])); }
+                     }
+                 }
+                 knots.push(boundaryMax); knots = [...new Set(knots)].sort((a, b) => a - b);
+                 const actualTotalKnots = knots.length;
+                 if (actualTotalKnots < 3) { alert(`Only ${actualTotalKnots} unique knots placed. RCS needs 3.`); return null; }
+                 console.log(`RCS: Requested ${numTotalKnots}, using ${actualTotalKnots} knots: ${knots.map(k=>k.toFixed(2))}`);
+
+                 const basisFunc = (x) => basisFunctionGeneratorRCS(x, knots);
+                 const X = data.map(d => basisFunc(d.x));
+                 if (X.some(row => row.some(isNaN))) { alert("RCS basis generation failed (NaN). Check knots/data."); return null; }
+                 const y = data.map(d => d.y);
+                 const C = solveLeastSquares(X, y); if (!C) return null;
+                 const flatC = math.flatten(C).valueOf();
+                 if (flatC.length !== actualTotalKnots) { alert(`RCS Coeff length mismatch: ${flatC.length} vs ${actualTotalKnots}`); return null; }
+                 const predict = createPredictFunction(flatC, basisFunc);
+                 const y_pred = data.map(d => predict(d.x)); const R2 = calculateRSquared(y, y_pred);
+                 return { coefficients: flatC, predict, rSquared: R2, knots: knots };
+            }
+
+            // --- Generate initial data ---
+            const sampleData = generateNoisyData( numPoints, bmiMin, bmiMax, baseTASIntercept, linearTrendTAS, quadraticTrendTAS, noiseLevel, sinAmplitude, sinFrequency, sinPhase);
+            sampleData.sort((a, b) => a.x - b.x);
+            const xValues = sampleData.map(d => d.x); const yValues = sampleData.map(d => d.y);
+            const xMin = Math.min(...xValues); const xMax = Math.max(...xValues);
+
+            // --- Chart.js Setup ---
+            const ctx = document.getElementById('regressionChart').getContext('2d');
+            const regressionChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: `Data (N=${numPoints}, Complex Non-Linear Trend)`,
+                        data: sampleData, // Use generated data
+                        backgroundColor: 'rgba(0, 123, 255, 0.6)', borderColor: 'rgba(0, 123, 255, 1)',
+                        borderWidth: 1, pointRadius: 4, pointHoverRadius: 6, showLine: false
+                    }, {
+                        label: 'Fitted Model', data: [],
+                        borderColor: 'rgba(220, 53, 69, 1)', borderWidth: 2.5,
+                        fill: false, tension: 0.1, pointRadius: 0, showLine: true
+                    }]
+                },
+                options: {
+                    scales: { x: { type: 'linear', position: 'bottom', title: { display: true, text: 'BMI', font: { size: 14 } }, min: bmiMin - 1, max: bmiMax + 1 }, y: { title: { display: true, text: 'Systolic Blood Pressure (TAS)', font: { size: 14 } } } },
+                    plugins: { legend: { position: 'top', labels: { font: { size: 13 } } }, tooltip: { /* Tooltip options */ } }, // Add tooltip options if needed
+                    animation: { duration: 0 }, hover: { animationDuration: 0 }, responsiveAnimationDuration: 0
+                }
+            });
+
+            // --- DOM Element References ---
+            const controls = document.getElementById('controls');
+            const modelInfoDiv = document.getElementById('modelInfo');
+            const polyParamsDiv = document.getElementById('polyParams');
+            const fracParamsDiv = document.getElementById('fracParams');
+            const splineParamsDiv = document.getElementById('splineParams');
+            const rcsParamsDiv = document.getElementById('rcsParams');
+            const modelTypeRadios = document.querySelectorAll('input[name="modelType"]');
+
+
+            // --- Update Plot Function ---
+            function updatePlot() {
+                 const selectedType = document.querySelector('input[name="modelType"]:checked').value;
+                 let model = null;
+                 polyParamsDiv.style.display = 'none'; fracParamsDiv.style.display = 'none';
+                 splineParamsDiv.style.display = 'none'; rcsParamsDiv.style.display = 'none';
+                 const N = sampleData.length; if (N === 0) return;
+
+                 try {
+                     let P = 0; // Params
+                     if (selectedType === 'polynomial') {
+                         polyParamsDiv.style.display = 'block'; const deg = parseInt(document.getElementById('polyDegree').value, 10); if (isNaN(deg)||deg<1) throw new Error("Deg>=1"); P=deg+1; if(P>N) throw new Error(`Poly P ${P}>N ${N}`); model=fitPolynomial(sampleData, deg);
+                     } else if (selectedType === 'fractional') {
+                         fracParamsDiv.style.display = 'block'; const pStr=document.getElementById('fracPowers').value; const uPow=[...new Set(pStr.split(',').map(p=>p.trim().toLowerCase()).filter(p=>p!=="").map(p=>(p==='log'?'log':parseFloat(p))).filter(p=>p==='log'||!isNaN(p)))]; if(uPow.length===0 && !pStr.includes('log')) throw new Error("Need FP powers"); P=uPow.length+1; if(P>N) throw new Error(`FP P ${P}>N ${N}`); model=fitFractional(sampleData, pStr);
+                     } else if (selectedType === 'spline') {
+                         splineParamsDiv.style.display = 'block'; const nLinK=parseInt(document.getElementById('numKnots').value,10); if(isNaN(nLinK)||nLinK<0) throw new Error("Lin knots>=0"); let actLinK=0; if(nLinK>0&&N>2){const sX=[...new Set(sampleData.map(d=>d.x))].sort((a,b)=>a-b);const iX=sX.slice(1,-1); actLinK=Math.min(nLinK,iX.length);} P=2+actLinK; if(P>N) throw new Error(`Lin Spline P ${P}>N ${N}`); model=fitSpline(sampleData, nLinK);
+                     } else if (selectedType === 'rcs') {
+                         rcsParamsDiv.style.display = 'block'; const nTotK=parseInt(document.getElementById('rcsNumTotalKnots').value,10); if(isNaN(nTotK)||nTotK<3) throw new Error("RCS knots>=3"); P=nTotK; if(P>N) throw new Error(`RCS P ${P}>N ${N}`); model=fitRCSpline(sampleData, nTotK);
+                     }
+                 } catch (error) { alert("Fit Error: " + error.message); console.error(error); model = null; }
+
+                 // Update Plot and Info
+                 if (model && model.predict && Array.isArray(model.coefficients) && model.coefficients.length > 0 && !isNaN(model.rSquared)) {
+                     const linePoints=[]; const numLinePoints=150; const currentXMin=xMin; const currentXMax=xMax;
+                     for(let i=0; i<=numLinePoints; i++){ const x=currentXMin+(currentXMax-currentXMin)*i/numLinePoints; try{const y=model.predict(x); if(y!==null&&!isNaN(y)&&isFinite(y))linePoints.push({x:x,y:y});}catch(e){}}
+                     regressionChart.data.datasets[1].data = linePoints;
+                     regressionChart.data.datasets[1].label = `Fitted ${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}`;
+                     regressionChart.update('none');
+
+                     let infoHTML = `<strong>R-squared:</strong> ${model.rSquared.toFixed(3)}`;
+                     let knotLabel = "Knots (Linear)"; if(selectedType === 'rcs') knotLabel = "Knots (RCS)";
+                     if(model.knots !== undefined) infoHTML += ` | <strong>${knotLabel} Used (${model.knots.length}):</strong> ${model.knots.length > 0 ? model.knots.map(k => k.toFixed(2)).join(', ') : 'None'}`;
+
+                     if (selectedType !== 'rcs') {
+                         let paramsForEq = {};
+                         if (selectedType === 'polynomial') paramsForEq = { degree: model.degree };
+                         else if (selectedType === 'fractional') paramsForEq = { powers: model.powers };
+                         else if (selectedType === 'spline') paramsForEq = { knots: model.knots };
+                         const equationStr = formatEquation(selectedType, model.coefficients, paramsForEq);
+                         infoHTML += `<br><span class="equation">Equation: ${equationStr}</span>`;
+                     } else {
+                          infoHTML += `<br><span class="equation">Equation: y ≈ β<sub>0</sub> + β<sub>1</sub>x + RCS Terms (based on ${model.knots.length} knots)</span>`;
+                     }
+                     modelInfoDiv.innerHTML = infoHTML;
+                 } else {
+                     regressionChart.data.datasets[1].data = []; regressionChart.data.datasets[1].label = 'Fitted Model (Error)'; regressionChart.update('none');
+                     modelInfoDiv.innerHTML = `<strong>R-squared:</strong> ${model && model.rSquared !== undefined && !isNaN(model.rSquared) ? model.rSquared.toFixed(3) : 'Error/Invalid'}<br><span class="equation">Equation: Not Available</span>`;
+                 }
+            } // End updatePlot
+
+            // --- Initial Setup ---
+            const initialType = document.querySelector('input[name="modelType"]:checked').value;
+             polyParamsDiv.style.display = (initialType === 'polynomial') ? 'block' : 'none';
+             fracParamsDiv.style.display = (initialType === 'fractional') ? 'block' : 'none';
+             splineParamsDiv.style.display = (initialType === 'spline') ? 'block' : 'none';
+             rcsParamsDiv.style.display = (initialType === 'rcs') ? 'block' : 'none';
+            updatePlot(); // Perform initial fit and plot
+
+            // --- Event Listener ---
+            controls.addEventListener('change', updatePlot);
+
+        }); // End DOMContentLoaded
+    </script>
+
+</body>
+</html>
