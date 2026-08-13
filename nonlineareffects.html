@@ -4,97 +4,226 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fitting non-linear effects using different models</title>
-    
+
     <!-- Include Chart.js library -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Include math.js library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
     <style>
+        :root {
+            --accent: #0056b3;
+            --accent-soft: #eaf2fb;
+            --border: #d9dee3;
+            --text: #2b2f33;
+            --muted: #5f676e;
+            --bg: #f4f5f7;
+            --card-bg: #ffffff;
+            --fit-color: rgba(220, 53, 69, 1);
+            --truth-color: rgba(40, 167, 69, 1);
+        }
+        * { box-sizing: border-box; }
         body {
-            font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background-color: #f4f4f4; line-height: 1.5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0; padding: 24px 16px; background-color: var(--bg);
+            color: var(--text); line-height: 1.55;
         }
-        h1 {
-            color: #333; margin-bottom: 1em; text-align: center;
+        .page {
+            max-width: 1150px; margin: 0 auto;
         }
-        #chartContainer {
-            width: 90%; max-width: 600px; margin-bottom: 25px; background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        header h1 {
+            color: #222; font-size: 1.5em; margin: 0 0 4px 0;
         }
-        #controls {
-            border: 1px solid #ccc; padding: 20px; border-radius: 8px; background-color: #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: 90%; max-width: 900px; box-sizing: border-box;
+        header .subtitle {
+            color: var(--muted); font-size: 1em; margin: 0 0 14px 0;
         }
-        #controls h3 {
-             margin-top: 0; color: #555; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;
+
+        /* Collapsible intro */
+        details.intro {
+            background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 12px 18px; margin-bottom: 18px;
         }
-        #controls label,
-        #controls input[type=radio],
-        #controls input[type=number],
-        #controls input[type=text] {
-            margin-right: 8px; margin-bottom: 12px; vertical-align: middle;
+        details.intro summary {
+            cursor: pointer; font-weight: 600; color: var(--accent); outline: none;
         }
-        #controls div.param-group {
-            margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ddd; display: none; margin-left: 20px;
+        details.intro p { margin: 10px 0 4px 0; font-size: 0.95em; }
+        details.intro code { background: #f0f2f4; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+
+        /* Main two-column layout: chart+results on the left, controls+explanation on the right */
+        .layout {
+            display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start;
         }
-        input[type=number], input[type=text] {
-            width: 100px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em;
+        @media (max-width: 880px) {
+            .layout { grid-template-columns: 1fr; }
         }
-        input[type=radio] {
-             margin-right: 3px; transform: scale(1.1);
+
+        .card {
+            background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06); padding: 16px 18px;
         }
-        .param-group label {
-             display: inline-block; min-width: 150px; font-weight: 500; color: #444;
+        .card h3 {
+            margin: 0 0 12px 0; font-size: 1.02em; color: #444;
+            border-bottom: 1px solid #eee; padding-bottom: 8px;
         }
+
+        #chartCard { margin-bottom: 18px; }
+        #chartToolbar {
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+            gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; font-size: 0.9em;
+        }
+        #chartToolbar label { color: var(--muted); cursor: pointer; }
+        #resampleBtn {
+            background: var(--accent); color: #fff; border: none; border-radius: 5px;
+            padding: 6px 14px; font-size: 0.9em; cursor: pointer;
+        }
+        #resampleBtn:hover { background: #004494; }
+
+        /* Fit summary */
         #modelInfo {
-            margin-top: 20px; font-size: 1.05em; color: #333; background-color: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; line-height: 1.6;
+            font-size: 0.98em;
         }
-        #modelInfo strong { color: #0056b3; }
+        #modelInfo .stat-row {
+            display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 8px;
+        }
+        #modelInfo .stat { color: var(--muted); }
+        #modelInfo .stat b { color: var(--accent); font-size: 1.05em; }
         #modelInfo .equation {
-            font-family: 'Times New Roman', Times, serif; font-size: 0.95em; color: #555; margin-top: 8px; display: block; word-wrap: break-word;
+            font-family: 'Times New Roman', Times, serif; font-size: 0.98em; color: #555;
+            margin-top: 6px; display: block; word-wrap: break-word;
+            background: #fafbfc; border: 1px dashed var(--border); border-radius: 5px; padding: 8px 10px;
         }
         #modelInfo sub, #modelInfo sup { line-height: 0; }
-        small { color: #666; margin-left: 5px; font-size: 0.9em; }
+
+        /* Controls */
+        .model-choice { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+        .model-choice label {
+            display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+            border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+            font-size: 0.95em; transition: background 0.15s, border-color 0.15s;
+        }
+        .model-choice label:hover { background: #f7f9fb; }
+        .model-choice label.selected { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+        .param-group {
+            margin-top: 12px; padding: 10px 12px; background: #f8f9fa;
+            border: 1px solid #e6e9ec; border-radius: 6px; display: none; font-size: 0.92em;
+        }
+        .param-group label { display: block; font-weight: 600; color: #444; margin-bottom: 5px; }
+        input[type=number], input[type=text] {
+            width: 110px; padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; font-size: 0.95em;
+        }
+        small { color: var(--muted); margin-left: 5px; font-size: 0.88em; }
+
+        /* Model explanation panel */
+        #explainCard { margin-top: 18px; }
+        #explainText { font-size: 0.92em; color: #3a3f44; }
+        #explainText p { margin: 0 0 10px 0; }
+        #explainText p:last-child { margin-bottom: 0; }
+        #explainText .try {
+            background: var(--accent-soft); border-left: 3px solid var(--accent);
+            padding: 8px 10px; border-radius: 0 5px 5px 0; font-size: 0.95em;
+        }
+        #explainText code, #explainText .m {
+            font-family: 'Times New Roman', Times, serif; font-style: italic; font-size: 1.05em;
+        }
     </style>
 </head>
 <body>
+<div class="page">
 
-    <h1>Fitting non-linear effects using different linear models</h1>
-    <bold>Association between body mass index (BMI) and systolic blood pressure, using synthetic data</bold>
+    <header>
+        <h1>Fitting non-linear effects using different linear models</h1>
+        <p class="subtitle">Association between body mass index (BMI) and systolic blood pressure, using synthetic data</p>
+    </header>
 
-    <div id="chartContainer">
-        <canvas id="regressionChart"></canvas> <!-- Canvas MUST exist before script tries to use it -->
+    <details class="intro" open>
+        <summary>How this simulation works</summary>
+        <p>
+            The scatter plot shows a synthetic sample of 100 observations. The <em>true</em> relationship between
+            BMI and systolic blood pressure was set to a curve (a quadratic trend plus a sine wave), and random
+            noise was added to each observation &mdash; so the data are genuinely non-linear, but noisy.
+            Each time you reload the page or click <em>New sample</em>, a fresh random sample is drawn from the same true curve.
+        </p>
+        <p>
+            Choose a modelling strategy on the right and adjust its complexity. The red line is the fitted curve.
+            The key idea: the first four approaches are still <strong>linear models fitted by ordinary least squares</strong> &mdash;
+            linear in the <em>coefficients</em> &mdash; they simply use different transformations of BMI as covariates.
+            The fifth (smoothing spline) takes a different route: maximum flexibility, tamed by a roughness penalty.
+            Tick <em>Show true curve</em> to compare each fit against the truth, and watch how a very flexible model
+            starts chasing the noise (high R&sup2;, but a wiggly line that would not replicate in a new sample).
+        </p>
+    </details>
+
+    <div class="layout">
+
+        <!-- LEFT: chart + fit summary -->
+        <div>
+            <div class="card" id="chartCard">
+                <canvas id="regressionChart"></canvas>
+                <div id="chartToolbar">
+                    <label><input type="checkbox" id="showTruth"> Show true curve</label>
+                    <button id="resampleBtn" type="button">New sample</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Fitted model</h3>
+                <div id="modelInfo">
+                    <div class="stat-row"><span class="stat"><b>R&sup2;:</b> N/A</span></div>
+                    <span class="equation">Equation: Not Available</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: controls + explanation of the selected model -->
+        <div>
+            <div class="card" id="controls">
+                <h3>Model selection</h3>
+                <div class="model-choice">
+                    <label><input type="radio" name="modelType" value="polynomial" checked> Polynomial</label>
+                    <label><input type="radio" name="modelType" value="fractional"> Fractional polynomial</label>
+                    <label><input type="radio" name="modelType" value="spline"> Linear spline</label>
+                    <label><input type="radio" name="modelType" value="rcs"> Restricted cubic spline</label>
+                    <label><input type="radio" name="modelType" value="smoothing"> Smoothing spline</label>
+                </div>
+
+                <div id="polyParams" class="param-group">
+                    <label for="polyDegree">Polynomial degree</label>
+                    <input type="number" id="polyDegree" value="2" min="1" max="15"> <small>(1 = linear)</small>
+                </div>
+                <div id="fracParams" class="param-group">
+                    <label for="fracPowers">Powers (comma-separated)</label>
+                    <input type="text" id="fracPowers" value="-0.5, 1" placeholder="e.g., -1,0.5,2,log" style="width: 160px;">
+                    <br><small>Use '0' or 'log' for log(x)</small>
+                </div>
+                <div id="splineParams" class="param-group">
+                    <label for="numKnots">Number of internal knots</label>
+                    <input type="number" id="numKnots" value="5" min="0" max="25">
+                </div>
+                <div id="rcsParams" class="param-group">
+                    <label for="rcsNumTotalKnots">Total knots (incl. boundary)</label>
+                    <input type="number" id="rcsNumTotalKnots" value="4" min="3" max="25"> <small>(min 3)</small>
+                    <br><small>The full equation is not displayed due to the number of terms.</small>
+                </div>
+                <div id="smoothParams" class="param-group">
+                    <label for="logLambda">Smoothing parameter: log<sub>10</sub>(&lambda;) = <span id="logLambdaVal">0.0</span></label>
+                    <input type="range" id="logLambda" value="0" min="-5" max="7" step="0.1" style="width: 100%;">
+                    <small>Left: rough (interpolates the data) &nbsp;&middot;&nbsp; Right: smooth (straight line)</small>
+                </div>
+            </div>
+
+            <div class="card" id="explainCard">
+                <h3 id="explainTitle">About this model</h3>
+                <div id="explainText"></div>
+            </div>
+        </div>
+
     </div>
 
-    <div id="controls">
-        <h3>Model Selection</h3>
-        <label> <input type="radio" name="modelType" value="polynomial" checked> Polynomial </label>
-        <label> <input type="radio" name="modelType" value="fractional"> Fractional Polynomial </label><p></p>
-        <label> <input type="radio" name="modelType" value="spline"> Linear Spline </label>
-        <label> <input type="radio" name="modelType" value="rcs"> Restricted Cubic Spline </label>
-
-        <div id="polyParams" class="param-group">
-            <label for="polyDegree">Polynomial Degree:</label>
-            <input type="number" id="polyDegree" value="2" min="1" max="15"> <small>(1 = Linear)</small>
-        </div>
-        <div id="fracParams" class="param-group">
-            <label for="fracPowers">Powers (comma-sep.):</label>
-            <input type="text" id="fracPowers" value="-0.5, 1" placeholder="e.g., -1,0.5,2,log">
-            <br><small style="margin-left: 160px;">(Use '0' for log(x))</small>
-        </div>
-        <div id="splineParams" class="param-group">
-            <label for="numKnots">Number of Knots (Linear):</label> <!-- Clarified label -->
-            <input type="number" id="numKnots" value="5" min="0" max="25"> <small>(Internal knots)</small>
-        </div>
-        <div id="rcsParams" class="param-group"> <!-- Correct ID -->
-            <label for="rcsNumTotalKnots">Total Knots (RCS):</label> <!-- Clarified label -->
-            <input type="number" id="rcsNumTotalKnots" value="4" min="3" max="25">
-            <small>(Incl. boundary; min 3)</small>
-            <p></p><small style="margin-left: 60px;">(The full equation is not display due to the number of terms)</small></p>
-        </div>
-
-        <div id="modelInfo">
-             <strong>R-squared:</strong> N/A <br>
-             <span class="equation">Equation: Not Available</span>
-        </div>
-    </div>
+    <footer style="margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 0.85em; color: var(--muted); text-align: center;">
+        Developed by Armando Teixeira-Pinto and Claude (Fable 5, Anthropic).
+        Free to use, share and adapt for teaching and research &mdash; licensed under
+        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="license noopener" style="color: var(--accent);">CC BY 4.0</a>.
+    </footer>
+</div>
 
     <script>
         // --- Ensure DOM is ready before executing complex logic ---
@@ -102,16 +231,19 @@
 
             // --- Data Generation Parameters ---
             const numPoints = 100; const bmiMin = 18; const bmiMax = 42;
-            const baseTASIntercept = 105; 
-            const linearTrendTAS = 0.3; 
-            const quadraticTrendTAS = 0.02; 
+            const baseTASIntercept = 105;
+            const linearTrendTAS = 0.3;
+            const quadraticTrendTAS = 0.02;
             const noiseLevel = 15;
-            const sinAmplitude = 8; 
-            const sinFrequency = 0.45; 
+            const sinAmplitude = 8;
+            const sinFrequency = 0.45;
             const sinPhase = 0;
 
             // --- Helper: Positive Part Function ---
             const pos = (x) => Math.max(0, x);
+
+            // --- True mean function (used for the optional "truth" line) ---
+            const trueMean = (x) => baseTASIntercept + (linearTrendTAS * x) + (quadraticTrendTAS * Math.pow(x, 2)) + (sinAmplitude * Math.sin(sinFrequency * x + sinPhase));
 
             // --- Generate Noisy Data ---
             function generateNoisyData(n, xMin, xMax, intercept, linear, quadratic, noise, amp, freq, phase) {
@@ -184,17 +316,16 @@
                  const absCoeff = Math.abs(coefficient);
                  let valueStr = "";
                  if (absCoeff>=10) {valueStr = absCoeff.toFixed(1)}
-                 else  { valueStr = absCoeff.toPrecision(2) }                 
+                 else  { valueStr = absCoeff.toPrecision(2) }
                  let sign = isIntercept ? (coefficient < 0 ? "-" : "") : (coefficient < 0 ? " - " : " + ");
                  if (!isIntercept && Math.abs(absCoeff - 1.0) < 0.001) valueStr = ""; // Omit 1.000
-                 //let betaStr = `β<sub>${index}</sub>`;
                  let betaStr = ``;
                  let variablePart = "";
                  if (termInfo) {
                      if (termInfo.power === 1) variablePart = "x";
                      else if (termInfo.power === 'log' || termInfo.power === 0) variablePart = "log(x)";
                      else if (termInfo.power !== undefined) variablePart = `x<sup>${termInfo.power}</sup>`;
-                     else if (termInfo.knot !== undefined) variablePart = `(x - ${termInfo.knot.toFixed(2)})<sub>+</sub>`;
+                     else if (termInfo.knot !== undefined) variablePart = `(x - ${termInfo.knot.toFixed(2)})<sub>+</sub>`;
                  }
                  let term = sign;
                  if (valueStr) term += valueStr + betaStr;
@@ -206,7 +337,7 @@
 
             function formatEquation(modelType, coefficients, params) {
                  if (!coefficients || coefficients.length === 0) return "Equation not available.";
-                 let equation = "y ≈ ";
+                 let equation = "y &asymp; ";
                  equation += formatTerm(coefficients[0], 0, null); // Intercept
                  if (modelType === 'polynomial') {
                      for (let i = 1; i <= params.degree; i++) if (coefficients[i] !== undefined) equation += formatTerm(coefficients[i], i, { power: i });
@@ -305,11 +436,74 @@
                  return { coefficients: flatC, predict, rSquared: R2, knots: knots };
             }
 
+            // --- Smoothing Spline (exact cubic smoothing spline, Reinsch algorithm; Green & Silverman 1994) ---
+            // Minimises  sum_i (y_i - f(x_i))^2 + lambda * integral f''(x)^2 dx
+            // The solution is a natural cubic spline with knots at every unique x.
+            // Numerically stable form: gamma = (R + lambda Q'W^-1 Q)^-1 Q'ybar ;  g = ybar - lambda W^-1 Q gamma
+            function fitSmoothingSpline(data, lambda) {
+                 // Collapse duplicate x values (weighted least squares on the means)
+                 const byX = new Map();
+                 for (const d of data) { if (!byX.has(d.x)) byX.set(d.x, {sum:0, n:0}); const e = byX.get(d.x); e.sum += d.y; e.n += 1; }
+                 const t = [...byX.keys()].sort((a,b) => a-b);
+                 const n = t.length;
+                 if (n < 4) { alert("Smoothing spline needs at least 4 unique X values."); return null; }
+                 const ybar = t.map(x => byX.get(x).sum / byX.get(x).n);
+                 const w = t.map(x => byX.get(x).n);
+                 const h = []; for (let i = 0; i < n-1; i++) h.push(t[i+1] - t[i]);
+
+                 try {
+                     const Q = math.zeros(n, n-2)._data, R = math.zeros(n-2, n-2)._data;
+                     for (let j = 1; j <= n-2; j++) {
+                         Q[j-1][j-1] = 1/h[j-1]; Q[j][j-1] = -1/h[j-1] - 1/h[j]; Q[j+1][j-1] = 1/h[j];
+                         R[j-1][j-1] = (h[j-1] + h[j]) / 3;
+                         if (j <= n-3) { R[j-1][j] = h[j]/6; R[j][j-1] = h[j]/6; }
+                     }
+                     const QT = math.transpose(Q);
+                     const WinvQ = Q.map((row, i) => row.map(v => v / w[i]));
+                     const QTWinvQ = math.multiply(QT, WinvQ);
+                     const M = R.map((row, j) => row.map((v, k) => v + lambda * QTWinvQ[j][k]));
+                     const Minv = math.inv(M);
+                     const gamma_int = math.multiply(Minv, math.multiply(QT, ybar));
+                     const shrink = math.multiply(WinvQ, gamma_int);
+                     const g = ybar.map((y, i) => y - lambda * shrink[i]);
+
+                     // Effective degrees of freedom = trace of the smoother ("hat") matrix
+                     const T = math.multiply(Minv, QTWinvQ);
+                     let df = n; for (let j = 0; j < n-2; j++) df -= lambda * T[j][j];
+
+                     // Natural cubic spline interpolation through (t_i, g_i) with 2nd derivatives gamma
+                     const gamma = [0, ...gamma_int, 0];
+                     const predict = (x) => {
+                         if (typeof x !== 'number' || isNaN(x)) return NaN;
+                         const xx = Math.min(Math.max(x, t[0]), t[n-1]);
+                         let lo = 0, hi = n-1;
+                         while (hi - lo > 1) { const m = (lo + hi) >> 1; if (t[m] <= xx) lo = m; else hi = m; }
+                         const i = lo, hh = h[i], a = xx - t[i], b = t[i+1] - xx;
+                         return (a * g[i+1] + b * g[i]) / hh
+                              - (a * b / 6) * ((1 + a/hh) * gamma[i+1] + (1 + b/hh) * gamma[i]);
+                     };
+                     const y_pred = data.map(d => predict(d.x));
+                     const R2 = calculateRSquared(data.map(d => d.y), y_pred);
+                     return { isPenalized: true, predict, rSquared: R2, effectiveDf: df, lambda: lambda };
+                 } catch (error) {
+                     console.error("Smoothing spline error:", error);
+                     alert("Smoothing spline fit failed: " + (error.message || error));
+                     return null;
+                 }
+            }
+
             // --- Generate initial data ---
-            const sampleData = generateNoisyData( numPoints, bmiMin, bmiMax, baseTASIntercept, linearTrendTAS, quadraticTrendTAS, noiseLevel, sinAmplitude, sinFrequency, sinPhase);
+            let sampleData = generateNoisyData( numPoints, bmiMin, bmiMax, baseTASIntercept, linearTrendTAS, quadraticTrendTAS, noiseLevel, sinAmplitude, sinFrequency, sinPhase);
             sampleData.sort((a, b) => a.x - b.x);
-            const xValues = sampleData.map(d => d.x); const yValues = sampleData.map(d => d.y);
-            const xMin = Math.min(...xValues); const xMax = Math.max(...xValues);
+            let xValues = sampleData.map(d => d.x); let yValues = sampleData.map(d => d.y);
+            let xMin = Math.min(...xValues); let xMax = Math.max(...xValues);
+
+            // --- True-curve line points (fixed function; recomputed on resample for range) ---
+            function truthLinePoints() {
+                const pts = []; const nPts = 150;
+                for (let i = 0; i <= nPts; i++) { const x = xMin + (xMax - xMin) * i / nPts; pts.push({ x: x, y: trueMean(x) }); }
+                return pts;
+            }
 
             // --- Chart.js Setup ---
             const ctx = document.getElementById('regressionChart').getContext('2d');
@@ -317,19 +511,23 @@
                 type: 'scatter',
                 data: {
                     datasets: [{
-                        label: `Data (N=${numPoints}, Complex Non-Linear Trend)`,
+                        label: `Data (N=${numPoints})`,
                         data: sampleData, // Use generated data
                         backgroundColor: 'rgba(0, 123, 255, 0.6)', borderColor: 'rgba(0, 123, 255, 1)',
                         borderWidth: 1, pointRadius: 4, pointHoverRadius: 6, showLine: false
                     }, {
-                        label: 'Fitted Model', data: [],
+                        label: 'Fitted model', data: [],
                         borderColor: 'rgba(220, 53, 69, 1)', borderWidth: 2.5,
+                        fill: false, tension: 0.1, pointRadius: 0, showLine: true
+                    }, {
+                        label: 'True curve', data: [], hidden: true,
+                        borderColor: 'rgba(40, 167, 69, 0.9)', borderWidth: 2, borderDash: [6, 4],
                         fill: false, tension: 0.1, pointRadius: 0, showLine: true
                     }]
                 },
                 options: {
                     scales: { x: { type: 'linear', position: 'bottom', title: { display: true, text: 'BMI', font: { size: 14 } }, min: bmiMin - 1, max: bmiMax + 1 }, y: { title: { display: true, text: 'Systolic Blood Pressure (TAS)', font: { size: 14 } } } },
-                    plugins: { legend: { position: 'top', labels: { font: { size: 13 } } }, tooltip: { /* Tooltip options */ } }, // Add tooltip options if needed
+                    plugins: { legend: { position: 'top', labels: { font: { size: 13 } } }, tooltip: { } },
                     animation: { duration: 0 }, hover: { animationDuration: 0 }, responsiveAnimationDuration: 0
                 }
             });
@@ -341,8 +539,106 @@
             const fracParamsDiv = document.getElementById('fracParams');
             const splineParamsDiv = document.getElementById('splineParams');
             const rcsParamsDiv = document.getElementById('rcsParams');
+            const smoothParamsDiv = document.getElementById('smoothParams');
             const modelTypeRadios = document.querySelectorAll('input[name="modelType"]');
+            const explainTitle = document.getElementById('explainTitle');
+            const explainText = document.getElementById('explainText');
+            const showTruthCheckbox = document.getElementById('showTruth');
+            const resampleBtn = document.getElementById('resampleBtn');
 
+            // --- Model explanations (shown in the side panel, updated with the selection) ---
+            const explanations = {
+                polynomial: {
+                    title: "Polynomial regression",
+                    html: `
+                        <p>The model adds powers of BMI as extra covariates:
+                        <span class="m">y = &beta;<sub>0</sub> + &beta;<sub>1</sub>x + &beta;<sub>2</sub>x&sup2; + &hellip; + &beta;<sub>d</sub>x<sup>d</sup> + &epsilon;</span>.
+                        Degree 1 is the usual straight line; degree 2 allows one bend; each extra degree allows one more bend.</p>
+                        <p>Polynomial terms are <strong>global</strong>: every coefficient affects the entire curve, so the fit
+                        cannot adapt locally. High degrees tend to produce wild oscillations, especially near the edges of the data.</p>
+                        <p class="try"><strong>Try:</strong> increase the degree from 1 to 2, 3, &hellip;, 12. R&sup2; always increases,
+                        but compare the fitted line with the true curve &mdash; at what point does the model start fitting noise
+                        rather than signal?</p>`
+                },
+                fractional: {
+                    title: "Fractional polynomials",
+                    html: `
+                        <p>Instead of integer powers, the covariates are <span class="m">x<sup>p</sup></span> for powers chosen from a small set,
+                        conventionally {&minus;2, &minus;1, &minus;0.5, 0, 0.5, 1, 2, 3}, where power 0 means <span class="m">log(x)</span>.
+                        For example, powers &ldquo;&minus;0.5, 1&rdquo; fit
+                        <span class="m">y = &beta;<sub>0</sub> + &beta;<sub>1</sub>x<sup>&minus;0.5</sup> + &beta;<sub>2</sub>x + &epsilon;</span>.</p>
+                        <p>Fractional polynomials can capture many curved shapes (asymptotes, steep initial change) with very few
+                        parameters, which is why they are popular for prognostic modelling. They require <span class="m">x &gt; 0</span>
+                        for negative and log powers. In practice (e.g., Stata's <em>fp</em>, R's <em>mfp</em>), the best powers are selected
+                        by comparing model deviances; here you choose them by hand.</p>
+                        <p class="try"><strong>Try:</strong> compare &ldquo;1&rdquo; (a straight line) with two-term models such as
+                        &ldquo;&minus;1, 2&rdquo;, &ldquo;0, 3&rdquo; or &ldquo;&minus;0.5, 1&rdquo;. Note how much shape you can get from only
+                        two terms. (Repeated powers, which in full FP methodology add an <span class="m">x<sup>p</sup>log(x)</span> term,
+                        are not implemented here &mdash; duplicates are simply dropped.)</p>`
+                },
+                spline: {
+                    title: "Linear spline",
+                    html: `
+                        <p>The range of BMI is split at <em>knots</em>, and a straight line is fitted within each interval,
+                        with the segments forced to join at the knots. This is achieved with hinge terms
+                        <span class="m">(x &minus; k)<sub>+</sub></span> (equal to 0 below knot <span class="m">k</span>, and
+                        <span class="m">x &minus; k</span> above it):
+                        <span class="m">y = &beta;<sub>0</sub> + &beta;<sub>1</sub>x + &beta;<sub>2</sub>(x &minus; k<sub>1</sub>)<sub>+</sub> + &hellip; + &epsilon;</span>.</p>
+                        <p>Each coefficient after &beta;<sub>1</sub> is the <strong>change in slope</strong> at that knot &mdash; a very
+                        interpretable quantity (e.g., &ldquo;above BMI 30, the slope increases by &beta;<sub>2</sub> mmHg per unit&rdquo;).
+                        The price is a fit that is angular rather than smooth. Knots here are placed at quantiles of the data.</p>
+                        <p class="try"><strong>Try:</strong> 0 knots (an ordinary straight line), then 2&ndash;3, then 15.
+                        Few knots underfit the curvature; many knots trace the noise.</p>`
+                },
+                rcs: {
+                    title: "Restricted cubic spline",
+                    html: `
+                        <p>Cubic polynomials are fitted between knots and joined smoothly (continuous first and second derivatives).
+                        &ldquo;Restricted&rdquo; (or <em>natural</em>) means the curve is forced to be <strong>linear beyond the boundary
+                        knots</strong>, which tames the erratic tail behaviour that plain polynomials and unrestricted cubic splines show.</p>
+                        <p>With <span class="m">k</span> knots, the model needs only <span class="m">k &minus; 1</span> coefficients
+                        (plus intercept), so it is remarkably economical: 4&ndash;5 knots handle most epidemiological dose&ndash;response
+                        shapes. This is the default flexible approach in Harrell's regression modelling framework
+                        (<em>rms</em> package in R). Knots are placed at quantiles of BMI.</p>
+                        <p class="try"><strong>Try:</strong> 3, 4, 5 knots and compare with a polynomial of similar R&sup2;.
+                        Look at the edges of the BMI range: the RCS stays well-behaved where the high-degree polynomial oscillates.</p>`
+                },
+                smoothing: {
+                    title: "Smoothing spline",
+                    html: `
+                        <p>A different strategy from the other four: instead of choosing a small number of basis terms and
+                        fitting by ordinary least squares, the smoothing spline places a knot at <strong>every</strong> data point
+                        and controls flexibility with a <strong>roughness penalty</strong>. It minimises
+                        <span class="m">&Sigma;(y<sub>i</sub> &minus; f(x<sub>i</sub>))&sup2; + &lambda;&int;f&Prime;(x)&sup2;dx</span>.</p>
+                        <p>The penalty shrinks the fit towards smoothness: as <span class="m">&lambda; &rarr; 0</span> the curve
+                        interpolates the data (effective df &rarr; n); as <span class="m">&lambda; &rarr; &infin;</span> it collapses to
+                        the ordinary least-squares straight line (effective df = 2). The <em>effective degrees of freedom</em>
+                        &mdash; the trace of the smoother matrix &mdash; plays the role that the coefficient count plays in the
+                        other models, but it need not be an integer.</p>
+                        <p>Because of the penalty this is <strong>not</strong> OLS &mdash; it is a ridge-type (shrinkage) estimator.
+                        In practice &lambda; is not chosen by eye but by cross-validation or REML: this is what
+                        <code style="font-style:normal">smooth.spline()</code> in R does, and it is the engine behind smooth terms in
+                        GAMs (<em>mgcv</em>).</p>
+                        <p class="try"><strong>Try:</strong> drag the slider to both extremes &mdash; verify the fit becomes exactly the
+                        straight line on the right and joins the dots on the left. Then find, by eye, the &lambda; whose curve best
+                        matches the true curve, and note its effective df: compare it with the number of coefficients an RCS
+                        needs to do the same job.</p>`
+                }
+            };
+
+            function updateExplanation(selectedType) {
+                const e = explanations[selectedType];
+                if (!e) return;
+                explainTitle.innerHTML = e.title;
+                explainText.innerHTML = e.html;
+            }
+
+            function highlightSelectedRadio() {
+                document.querySelectorAll('.model-choice label').forEach(l => {
+                    const input = l.querySelector('input');
+                    l.classList.toggle('selected', input && input.checked);
+                });
+            }
 
             // --- Update Plot Function ---
             function updatePlot() {
@@ -350,10 +646,11 @@
                  let model = null;
                  polyParamsDiv.style.display = 'none'; fracParamsDiv.style.display = 'none';
                  splineParamsDiv.style.display = 'none'; rcsParamsDiv.style.display = 'none';
+                 smoothParamsDiv.style.display = 'none';
                  const N = sampleData.length; if (N === 0) return;
+                 let P = 0; // Number of estimated coefficients
 
                  try {
-                     let P = 0; // Params
                      if (selectedType === 'polynomial') {
                          polyParamsDiv.style.display = 'block'; const deg = parseInt(document.getElementById('polyDegree').value, 10); if (isNaN(deg)||deg<1) throw new Error("Deg>=1"); P=deg+1; if(P>N) throw new Error(`Poly P ${P}>N ${N}`); model=fitPolynomial(sampleData, deg);
                      } else if (selectedType === 'fractional') {
@@ -362,37 +659,66 @@
                          splineParamsDiv.style.display = 'block'; const nLinK=parseInt(document.getElementById('numKnots').value,10); if(isNaN(nLinK)||nLinK<0) throw new Error("Lin knots>=0"); let actLinK=0; if(nLinK>0&&N>2){const sX=[...new Set(sampleData.map(d=>d.x))].sort((a,b)=>a-b);const iX=sX.slice(1,-1); actLinK=Math.min(nLinK,iX.length);} P=2+actLinK; if(P>N) throw new Error(`Lin Spline P ${P}>N ${N}`); model=fitSpline(sampleData, nLinK);
                      } else if (selectedType === 'rcs') {
                          rcsParamsDiv.style.display = 'block'; const nTotK=parseInt(document.getElementById('rcsNumTotalKnots').value,10); if(isNaN(nTotK)||nTotK<3) throw new Error("RCS knots>=3"); P=nTotK; if(P>N) throw new Error(`RCS P ${P}>N ${N}`); model=fitRCSpline(sampleData, nTotK);
+                     } else if (selectedType === 'smoothing') {
+                         smoothParamsDiv.style.display = 'block';
+                         const logLam = parseFloat(document.getElementById('logLambda').value);
+                         document.getElementById('logLambdaVal').textContent = logLam.toFixed(1);
+                         model = fitSmoothingSpline(sampleData, Math.pow(10, logLam));
                      }
                  } catch (error) { alert("Fit Error: " + error.message); console.error(error); model = null; }
 
+                 updateExplanation(selectedType);
+                 highlightSelectedRadio();
+
                  // Update Plot and Info
-                 if (model && model.predict && Array.isArray(model.coefficients) && model.coefficients.length > 0 && !isNaN(model.rSquared)) {
+                 const validModel = model && model.predict && !isNaN(model.rSquared) &&
+                     (model.isPenalized || (Array.isArray(model.coefficients) && model.coefficients.length > 0));
+                 if (validModel) {
                      const linePoints=[]; const numLinePoints=150; const currentXMin=xMin; const currentXMax=xMax;
                      for(let i=0; i<=numLinePoints; i++){ const x=currentXMin+(currentXMax-currentXMin)*i/numLinePoints; try{const y=model.predict(x); if(y!==null&&!isNaN(y)&&isFinite(y))linePoints.push({x:x,y:y});}catch(e){}}
                      regressionChart.data.datasets[1].data = linePoints;
                      regressionChart.data.datasets[1].label = `Fitted ${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}`;
+                     regressionChart.data.datasets[2].data = truthLinePoints();
+                     regressionChart.data.datasets[2].hidden = !showTruthCheckbox.checked;
                      regressionChart.update('none');
 
-                     let infoHTML = `<strong>R-squared:</strong> ${model.rSquared.toFixed(3)}`;
-                     let knotLabel = "Knots (Linear)"; if(selectedType === 'rcs') knotLabel = "Knots (RCS)";
-                     if(model.knots !== undefined) infoHTML += ` | <strong>${knotLabel} Used (${model.knots.length}):</strong> ${model.knots.length > 0 ? model.knots.map(k => k.toFixed(2)).join(', ') : 'None'}`;
+                     let infoHTML = `<div class="stat-row">` +
+                         `<span class="stat"><b>R&sup2;:</b> ${model.rSquared.toFixed(3)}</span>` +
+                         (model.isPenalized
+                             ? `<span class="stat"><b>Effective df:</b> ${model.effectiveDf.toFixed(2)}</span><span class="stat"><b>&lambda;:</b> ${model.lambda >= 100 || model.lambda < 0.01 ? model.lambda.toExponential(1) : model.lambda.toPrecision(3)}</span>`
+                             : `<span class="stat"><b>Coefficients estimated:</b> ${model.coefficients.length}</span>`) +
+                         `</div>`;
+                     let knotLabel = "Knots"; 
+                     if(model.knots !== undefined) infoHTML += `<div class="stat-row"><span class="stat"><b>${knotLabel} used (${model.knots.length}):</b> ${model.knots.length > 0 ? model.knots.map(k => k.toFixed(2)).join(', ') : 'None'}</span></div>`;
 
-                     if (selectedType !== 'rcs') {
+                     if (selectedType === 'smoothing') {
+                         infoHTML += `<span class="equation">No finite coefficient list: minimises &Sigma;(y<sub>i</sub> &minus; f(x<sub>i</sub>))&sup2; + &lambda;&int;f&Prime;(x)&sup2;dx over all twice-differentiable f. The solution is a natural cubic spline with a knot at every data point.</span>`;
+                     } else if (selectedType !== 'rcs') {
                          let paramsForEq = {};
                          if (selectedType === 'polynomial') paramsForEq = { degree: model.degree };
                          else if (selectedType === 'fractional') paramsForEq = { powers: model.powers };
                          else if (selectedType === 'spline') paramsForEq = { knots: model.knots };
                          const equationStr = formatEquation(selectedType, model.coefficients, paramsForEq);
-                         infoHTML += `<br><span class="equation">Equation: ${equationStr}</span>`;
+                         infoHTML += `<span class="equation">${equationStr}</span>`;
                      } else {
-                          infoHTML += `<br><span class="equation">Equation: y ≈ β<sub>0</sub> + β<sub>1</sub>x + RCS Terms (based on ${model.knots.length} knots)</span>`;
+                          infoHTML += `<span class="equation">y &asymp; &beta;<sub>0</sub> + &beta;<sub>1</sub>x + RCS terms (based on ${model.knots.length} knots)</span>`;
                      }
                      modelInfoDiv.innerHTML = infoHTML;
                  } else {
-                     regressionChart.data.datasets[1].data = []; regressionChart.data.datasets[1].label = 'Fitted Model (Error)'; regressionChart.update('none');
-                     modelInfoDiv.innerHTML = `<strong>R-squared:</strong> ${model && model.rSquared !== undefined && !isNaN(model.rSquared) ? model.rSquared.toFixed(3) : 'Error/Invalid'}<br><span class="equation">Equation: Not Available</span>`;
+                     regressionChart.data.datasets[1].data = []; regressionChart.data.datasets[1].label = 'Fitted model (error)'; regressionChart.update('none');
+                     modelInfoDiv.innerHTML = `<div class="stat-row"><span class="stat"><b>R&sup2;:</b> ${model && model.rSquared !== undefined && !isNaN(model.rSquared) ? model.rSquared.toFixed(3) : 'Error/Invalid'}</span></div><span class="equation">Equation: Not Available</span>`;
                  }
             } // End updatePlot
+
+            // --- Resample: draw a new random sample from the same true curve ---
+            function resampleData() {
+                sampleData = generateNoisyData(numPoints, bmiMin, bmiMax, baseTASIntercept, linearTrendTAS, quadraticTrendTAS, noiseLevel, sinAmplitude, sinFrequency, sinPhase);
+                sampleData.sort((a, b) => a.x - b.x);
+                xValues = sampleData.map(d => d.x); yValues = sampleData.map(d => d.y);
+                xMin = Math.min(...xValues); xMax = Math.max(...xValues);
+                regressionChart.data.datasets[0].data = sampleData;
+                updatePlot();
+            }
 
             // --- Initial Setup ---
             const initialType = document.querySelector('input[name="modelType"]:checked').value;
@@ -402,8 +728,15 @@
              rcsParamsDiv.style.display = (initialType === 'rcs') ? 'block' : 'none';
             updatePlot(); // Perform initial fit and plot
 
-            // --- Event Listener ---
+            // --- Event Listeners ---
             controls.addEventListener('change', updatePlot);
+            document.getElementById('logLambda').addEventListener('input', updatePlot); // live update while dragging
+            showTruthCheckbox.addEventListener('change', () => {
+                regressionChart.data.datasets[2].data = truthLinePoints();
+                regressionChart.data.datasets[2].hidden = !showTruthCheckbox.checked;
+                regressionChart.update('none');
+            });
+            resampleBtn.addEventListener('click', resampleData);
 
         }); // End DOMContentLoaded
     </script>
