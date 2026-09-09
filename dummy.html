@@ -1,22 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dummy Variable Coding App</title>
+    <title>Dummy Variable Coding · Multiple Linear Regression</title>
+    <meta name="description" content="Explore how a categorical predictor becomes dummy variables. Choose a reference group and compare the resulting binary columns.">
     <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        select, button { padding: 10px; margin: 10px 0; }
+        :root { color-scheme: light; --ink: #172c42; --muted: #526579; --blue: #215ac4; --line: #dce4ee; --surface: #fff; --canvas: #f3f6fa; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--canvas); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 1rem; line-height: 1.6; }
+        button, select { font: inherit; }
+        button, select, a { -webkit-tap-highlight-color: transparent; }
+        :focus-visible { outline: 3px solid #df9b16; outline-offset: 4px; }
+        .topbar { background: #152e47; color: #e3ebf4; }
+        .topbar-inner { max-width: 1280px; margin: auto; min-height: 68px; padding: 16px 40px; display: flex; align-items: center; gap: 12px; font-size: .875rem; font-weight: 600; letter-spacing: .015em; }
+        .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #587187; border-radius: 7px; font-family: Georgia, serif; font-size: 1.25rem; color: #a9d9f5; }
+        .topbar-topic { margin-left: auto; color: #b5c8d9; font-weight: 400; }
+        main { max-width: 1280px; margin: auto; padding: 44px 40px 40px; }
+        .eyebrow { margin: 0 0 8px; color: var(--blue); font-size: .8125rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+        h1 { margin: 0; font-size: clamp(2rem, 3.5vw, 2.75rem); line-height: 1.15; letter-spacing: -.045em; font-weight: 700; }
+        .intro { max-width: 730px; margin: 14px 0 30px; color: var(--muted); }
+        .workspace { display: grid; grid-template-columns: 285px minmax(0, 1fr); gap: 24px; align-items: start; }
+        .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 3px 8px #1b365307; overflow: hidden; }
+        .controls { padding: 24px; }
+        .section-label { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+        .step { display: grid; place-items: center; background: #eaf0fb; color: var(--blue); font-weight: 700; width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; font-size: .875rem; }
+        h2 { font-size: 1.0625rem; line-height: 1.4; margin: 0; letter-spacing: -.02em; }
+        label { display: block; font-weight: 650; font-size: .875rem; margin-bottom: 8px; }
+        select { display: block; width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #aebed0; border-radius: 7px; background: white; color: var(--ink); cursor: pointer; }
+        .hint { margin: 10px 0 20px; color: var(--muted); font-size: .875rem; line-height: 1.55; }
+        .generate { width: 100%; border: 1px solid var(--blue); padding: 12px 14px; background: var(--blue); border-radius: 7px; color: white; font-size: .875rem; font-weight: 650; cursor: pointer; transition: background .15s; }
+        .generate:hover { background: #17499f; }
+        .rule { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+        .rule-count { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+        .rule-count span { color: var(--muted); font-size: .8125rem; }
+        .rule-count strong { display: block; color: var(--ink); font-size: 1.375rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+        .rule-count .arrow { color: #758ca2; font-size: 1.5rem; }
+        .rule p { font-size: .875rem; color: var(--muted); margin: 0; }
+        .dataset-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 24px 24px 18px; }
+        .dataset-heading .section-label { margin: 0; }
+        .row-count { color: var(--muted); font-size: .8125rem; white-space: nowrap; }
+        .dataset-status { margin: 0 24px 20px; border-radius: 6px; background: #f3f6fa; padding: 10px 12px; font-size: .875rem; color: var(--muted); }
+        .dataset-status strong { color: var(--ink); }
+        .dataset-status.ready { background: #edf5ff; color: #244a7b; }
+        .table-scroll { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; text-align: left; font-size: .875rem; }
+        caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+        th { padding: 14px 16px; background: #f7f9fc; color: var(--muted); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: .8125rem; font-weight: 600; line-height: 1.5; vertical-align: bottom; }
+        th:first-child, td:first-child { padding-left: 24px; }
+        th:last-child, td:last-child { padding-right: 24px; }
+        td { padding: 15px 16px; border-bottom: 1px solid #e9eef4; font-variant-numeric: tabular-nums; }
+        tbody tr:last-child td { border-bottom: 0; }
+        tbody tr:hover td { background-color: #f5f8fd; }
+        .numeric { text-align: right; }
+        .id-cell { color: #687b8e; }
+        .column-detail { display: block; font-size: .75rem; color: #687b8e; font-weight: 400; }
+        th.dummy { background: #eaf1ff; color: #2154a5; min-width: 94px; text-align: center; }
+        td.dummy { background: #f5f8ff; text-align: center; }
+        .dummy-start { border-left: 2px solid #d5e2fa; }
+        .binary { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; color: #677b93; font-weight: 600; }
+        .binary.one { background: #dce9ff; color: #154ca9; }
+        .treatment { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; background: #8391a3; flex-shrink: 0; }
+        .dot.drug-a { background: #3573d5; }
+        .dot.drug-b { background: #138575; }
+        .table-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 16px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: .8125rem; }
+        .legend-key { display: inline-block; width: 9px; height: 9px; background: #dce9ff; border: 1px solid #91b2e8; border-radius: 2px; margin-right: 6px; }
+        .explanation { display: grid; grid-template-columns: 36px 1fr; gap: 12px; margin-top: 24px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 12px; background: #eaf0f7; }
+        .explanation-symbol { font-family: Georgia, serif; font-size: 1.5rem; color: #53728f; line-height: 1.4; }
+        .explanation h2 { font-size: .9375rem; margin-bottom: 5px; }
+        .explanation p { color: var(--muted); margin: 0; font-size: .875rem; max-width: 850px; }
+        footer { margin-top: 24px; font-size: .8125rem; color: #60758b; }
+        @media (max-width: 1000px) { .workspace { grid-template-columns: 245px minmax(0,1fr); gap: 18px; } .controls { padding: 20px; } main { padding: 32px 24px; } .topbar-inner { padding-left: 24px; padding-right: 24px; } th, td { padding-left: 12px; padding-right: 12px; } }
+        @media (max-width: 760px) { .workspace { grid-template-columns: 1fr; } .controls { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 24px; } .controls .section-label { grid-column: 1 / -1; margin-bottom: 20px; } .rule { margin: 0; padding: 0 0 0 22px; border-top: 0; border-left: 1px solid var(--line); } .intro { margin-bottom: 24px; } }
+        @media (max-width: 480px) { main { padding: 28px 16px; } .topbar-inner { padding: 14px 16px; min-height: 60px; } .topbar-topic { display: none; } .controls { display: block; } .rule { margin-top: 20px; padding: 18px 0 0; border-left: 0; border-top: 1px solid var(--line); } .dataset-heading { padding: 20px 16px 16px; align-items: start; } .dataset-status { margin-left: 16px; margin-right: 16px; } .row-count { white-space: normal; text-align: right; } .table-footer { padding: 16px; } .explanation { padding: 18px; grid-template-columns: 24px 1fr; } }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
 </head>
 <body>
     <div id="root"></div>
+    <noscript>This interactive exercise needs JavaScript enabled to generate dummy variables.</noscript>
     <script type="text/babel">
         const { useState } = React;
 
@@ -33,10 +99,11 @@
             const categories = ['Placebo', 'Drug A', 'Drug B'];
             const [referenceCategory, setReferenceCategory] = useState('Placebo');
             const [dataset, setDataset] = useState(initialData);
+            const [generatedReference, setGeneratedReference] = useState(null);
 
             const generateDummyVariables = () => {
                 const updatedDataset = dataset.map(row => {
-                    const newRow = { ...row };
+                    const newRow = Object.assign({}, row);
 
                     Object.keys(newRow).forEach(key => {
                         if (key.startsWith('TreatmentGroup_')) {
@@ -54,39 +121,81 @@
                 });
 
                 setDataset(updatedDataset);
+                setGeneratedReference(referenceCategory);
             };
 
-            return (
-                <div>
-                    <h1>Dummy Variable Coding App</h1>
-                    <p>Select a reference category for the categorical variable TreatmentGroup:</p>
-                    <select value={referenceCategory} onChange={e => setReferenceCategory(e.target.value)}>
-                        {categories.map(category => (
-                            <option key={category} value={category}>{category}</option>
-                        ))}
-                    </select>
-                    <button onClick={generateDummyVariables}>Generate Dummy Variables</button>
+            const dummyCategories = generatedReference === null ? [] : categories.filter(category => category !== generatedReference);
+            const pending = generatedReference !== null && generatedReference !== referenceCategory;
+            const treatmentClass = value => value === 'Drug A' ? 'drug-a' : value === 'Drug B' ? 'drug-b' : 'placebo';
 
-                    <h2>Dataset (Head View)</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                {Object.keys(dataset[0]).map((col, index) => (
-                                    <th key={index}>{col}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {dataset.slice(0, 5).map((row, rowIndex) => (
-                                <tr key={rowIndex}>
-                                    {Object.values(row).map((value, colIndex) => (
-                                        <td key={colIndex}>{value}</td>
-                                    ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            return (
+                <React.Fragment>
+                    <header className="topbar">
+                        <div className="topbar-inner">
+                            <span className="brand-mark" aria-hidden="true">β</span>
+                            <span>Multiple Linear Regression</span>
+                            <span className="topbar-topic">Interactive exercise</span>
+                        </div>
+                    </header>
+                    <main>
+                        <p className="eyebrow">Categorical predictors</p>
+                        <h1>Dummy variable coding</h1>
+                        <p className="intro">Turn treatment groups into binary predictors. Choose a reference category, then generate the dummy variables to see how each observation is encoded.</p>
+                        <div className="workspace">
+                            <section className="panel controls" aria-labelledby="setup-title">
+                                <div className="section-label"><span className="step" aria-hidden="true">1</span><h2 id="setup-title">Choose a reference</h2></div>
+                                <div>
+                                    <label htmlFor="reference-category">Reference category</label>
+                                    <select id="reference-category" value={referenceCategory} onChange={e => setReferenceCategory(e.target.value)} aria-describedby="reference-hint">
+                                        {categories.map(category => <option key={category} value={category}>{category}</option>)}
+                                    </select>
+                                    <p id="reference-hint" className="hint">The baseline group used to compare the other treatments.</p>
+                                    <button className="generate" onClick={generateDummyVariables}>Generate dummy variables</button>
+                                </div>
+                                <div className="rule">
+                                    <div className="rule-count"><span><strong>3</strong>categories</span><span className="arrow" aria-hidden="true">→</span><span><strong>2</strong>dummy variables</span></div>
+                                    <p>For <em>k</em> categories, use <strong><em>k</em> − 1</strong> dummy variables when the model includes an intercept.</p>
+                                </div>
+                            </section>
+                            <section className="panel dataset" aria-labelledby="dataset-title">
+                                <div className="dataset-heading">
+                                    <div className="section-label"><span className="step" aria-hidden="true">2</span><h2 id="dataset-title">Inspect the dataset</h2></div>
+                                    <span className="row-count">First 5 of 6 observations</span>
+                                </div>
+                                <p className={'dataset-status' + (generatedReference !== null ? ' ready' : '')} role="status" aria-live="polite">
+                                    {generatedReference === null ? 'Original dataset · Generate dummy variables to add the encoded columns.' : pending ? <React.Fragment>Showing <strong>{generatedReference}</strong> as reference. Generate again to apply <strong>{referenceCategory}</strong>.</React.Fragment> : <React.Fragment>Reference: <strong>{generatedReference}</strong> · Both dummy variables are 0 for this group.</React.Fragment>}
+                                </p>
+                                <div className="table-scroll" role="region" aria-label="Dataset table; scroll horizontally on small screens" tabIndex="0">
+                                    <table>
+                                        <caption>First five dataset observations{generatedReference !== null ? ', with dummy variables relative to ' + generatedReference : ''}</caption>
+                                        <thead><tr>
+                                            <th scope="col">ID</th>
+                                            <th scope="col" className="numeric">Age<span className="column-detail">years</span></th>
+                                            <th scope="col">Treatment<span className="column-detail">group</span></th>
+                                            <th scope="col" className="numeric">Blood pressure</th>
+                                            {dummyCategories.map((category, index) => <th scope="col" key={category} className={'dummy' + (index === 0 ? ' dummy-start' : '')} title={'TreatmentGroup_' + category}>{category}<span className="column-detail">dummy</span></th>)}
+                                        </tr></thead>
+                                        <tbody>{dataset.slice(0, 5).map(row => <tr key={row.ID}>
+                                            <td className="id-cell">{row.ID}</td>
+                                            <td className="numeric">{row.Age}</td>
+                                            <td><span className="treatment"><span className={'dot ' + treatmentClass(row.TreatmentGroup)} aria-hidden="true"></span>{row.TreatmentGroup}</span></td>
+                                            <td className="numeric">{row.BloodPressure}</td>
+                                            {dummyCategories.map((category, index) => <td key={category} className={'dummy' + (index === 0 ? ' dummy-start' : '')}><span className={'binary' + (row['TreatmentGroup_' + category] === 1 ? ' one' : '')}>{row['TreatmentGroup_' + category]}</span></td>)}
+                                        </tr>)}</tbody>
+                                    </table>
+                                </div>
+                                <div className="table-footer">
+                                    {generatedReference === null ? <span>Each row represents one observation.</span> : <React.Fragment><span><span className="legend-key" aria-hidden="true"></span>Generated columns</span><span><strong>1</strong> = belongs to group</span><span><strong>0</strong> = does not belong</span></React.Fragment>}
+                                </div>
+                            </section>
+                        </div>
+                        <aside className="explanation" aria-labelledby="explanation-title">
+                            <span className="explanation-symbol" aria-hidden="true">β</span>
+                            <div><h2 id="explanation-title">Why leave one category out?</h2><p>The reference category is represented by zeros in both dummy columns. With an intercept in the regression model, this avoids redundant predictors and lets each treatment coefficient describe a difference from the reference group.</p></div>
+                        </aside>
+                        <footer>Multiple linear regression / Dummy variables</footer>
+                    </main>
+                </React.Fragment>
             );
         };
 
